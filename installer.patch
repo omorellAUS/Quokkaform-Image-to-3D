@@ -1,0 +1,4401 @@
+From d188e5f1df1dc6d47b76a1896379d21d02c2ee57 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:25:29 +0800
+Subject: [PATCH 01/10] gitattributes: CRLF for .cmd / .ps1 / .iss as for .bat
+ (Windows launchers and setup scripts)
+
+---
+ .gitattributes | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/.gitattributes b/.gitattributes
+index f23045f..38d65c5 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -1,2 +1,5 @@
+ # Batch files must use CRLF line endings (goto/labels can break with LF).
+ *.bat text eol=crlf
++*.cmd text eol=crlf
++*.ps1 text eol=crlf
++*.iss text eol=crlf
+-- 
+2.47.3
+
+
+From a7edc4ba9b63ebb94d71311272bd7a057878bdbe Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 21:52:00 +0800
+Subject: [PATCH 02/10] Requirements: add plyfile (imported by TRELLIS) and
+ pywebview, pin nvdiffrast v0.4.0 and mip-splatting, drop unused
+ diffoctreerast; start.bat installs the new packages into older venvs
+
+---
+ requirements.txt | 13 ++++++++++---
+ start.bat        | 12 +++++++++++-
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/requirements.txt b/requirements.txt
+index a1af695..a1d6c10 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -33,13 +33,20 @@ pymeshfix==0.17.0
+ igraph==0.11.8
+ transformers==4.50.3
+ open3d==0.19.0
++# Imported by TRELLIS's Gaussian code (GPL-3.0-or-later); was missing.
++plyfile==1.1.2
+ git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8
+ https://github.com/bdashore3/flash-attention/releases/download/v2.7.1.post1/flash_attn-2.7.1.post1+cu124torch2.5.1cxx11abiFALSE-cp310-cp310-win_amd64.whl; sys_platform == 'win32' and python_version == '3.10'
+ --find-links https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.5.1_cu124.html
+ kaolin==0.17.0
+-git+https://github.com/NVlabs/nvdiffrast.git
+-git+https://github.com/JeffreyXiang/diffoctreerast.git
+-git+https://github.com/autonomousvision/mip-splatting.git#subdirectory=submodules/diff-gaussian-rasterization/
++# nvdiffrast pinned to the v0.4.0 release (was the moving default branch).
++git+https://github.com/NVlabs/nvdiffrast.git@v0.4.0
++# diffoctreerast is not installed any more: TRELLIS only uses it for the
++# radiance-field (octree) renderer, which this app never decodes, and
++# TRELLIS's OctreeRenderer just prints a warning when it is missing.
++# Mip-splatting's diff-gaussian-rasterization (needs kernel_size /
++# subpixel_offset; the original graphdeco rasteriser does not fit), pinned.
++git+https://github.com/autonomousvision/mip-splatting.git@dda02ab5ecf45d6edb8c540d9bb65c7e451345a9#subdirectory=submodules/diff-gaussian-rasterization/
+ spconv-cu124==2.3.8
+ gradio==4.44.1
+ fastapi==0.115.6
+diff --git a/start.bat b/start.bat
+index de9c104..3846cdd 100644
+--- a/start.bat
++++ b/start.bat
+@@ -77,7 +77,7 @@ if exist "%MARKER%" goto :run
+ 
+ echo.
+ echo First run: installing dependencies (this takes a while)...
+-echo Building nvdiffrast / diffoctreerast / diff-gaussian-rasterization needs
++echo Building nvdiffrast / diff-gaussian-rasterization needs
+ echo the CUDA 12.4 toolkit and Visual Studio 2022 C++ Build Tools.
+ 
+ rem setuptools is pinned: newer releases removed distutils._msvccompiler,
+@@ -141,6 +141,16 @@ if errorlevel 1 (
+     if errorlevel 1 echo WARNING: SAM 2 install failed - "Select object" will not work, everything else will.
+ )
+ 
++rem plyfile (TRELLIS Gaussian code) and pywebview (desktop window) were added
++rem to requirements.txt later; install them into older venvs once.
++python -c "import plyfile, webview" >nul 2>&1
++if errorlevel 1 (
++    echo.
++    echo Installing plyfile and pywebview ^(one time, small^)...
++    pip install plyfile==1.1.2 pywebview==6.2.1
++    if errorlevel 1 echo WARNING: plyfile / pywebview install failed.
++)
++
+ if not defined DOWNLOAD_ONLY goto :start_app
+ echo.
+ echo Downloading models (about 4.3 GB on a first install; finished files are kept)...
+-- 
+2.47.3
+
+
+From 52a2fafd51c3a40eeaf14aa5809044bc5e6dc202 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 21:53:19 +0800
+Subject: [PATCH 03/10] kaolin stub: TRELLIS FlexiCubes only needs
+ kaolin.utils.testing.check_tensor; appended to sys.path so a real kaolin
+ still wins (installer skips kaolin and its ~150 MB of Jupyter/warp/usd deps);
+ tests
+
+---
+ app/backend/model.py               |  6 +++
+ app/stubs/README.txt               | 10 ++++
+ app/stubs/kaolin/__init__.py       |  3 ++
+ app/stubs/kaolin/utils/__init__.py |  0
+ app/stubs/kaolin/utils/testing.py  | 33 +++++++++++++
+ tests/conftest.py                  |  7 +++
+ tests/test_kaolin_stub.py          | 76 ++++++++++++++++++++++++++++++
+ 7 files changed, 135 insertions(+)
+ create mode 100644 app/stubs/README.txt
+ create mode 100644 app/stubs/kaolin/__init__.py
+ create mode 100644 app/stubs/kaolin/utils/__init__.py
+ create mode 100644 app/stubs/kaolin/utils/testing.py
+ create mode 100644 tests/conftest.py
+ create mode 100644 tests/test_kaolin_stub.py
+
+diff --git a/app/backend/model.py b/app/backend/model.py
+index 4257efe..cd472c7 100644
+--- a/app/backend/model.py
++++ b/app/backend/model.py
+@@ -24,6 +24,12 @@ TRELLIS_PATH = ROOT / "TRELLIS"
+ if TRELLIS_PATH.exists() and str(TRELLIS_PATH) not in sys.path:
+     sys.path.insert(0, str(TRELLIS_PATH))
+ 
++# Stand-ins for packages TRELLIS imports but barely uses (kaolin: only
++# check_tensor). Appended, so a real installed package always wins.
++STUBS_PATH = ROOT / "app" / "stubs"
++if str(STUBS_PATH) not in sys.path:
++    sys.path.append(str(STUBS_PATH))
++
+ # TRELLIS reads these at import time. start.bat sets them; these are the
+ # defaults for manual runs (TRELLIS README: SPCONV_ALGO=native for single
+ # runs; ATTN_BACKEND is flash_attn unless overridden, e.g. xformers).
+diff --git a/app/stubs/README.txt b/app/stubs/README.txt
+new file mode 100644
+index 0000000..3fa7e06
+--- /dev/null
++++ b/app/stubs/README.txt
+@@ -0,0 +1,10 @@
++Minimal stand-ins for packages TRELLIS imports but this app barely uses.
++This folder is APPENDED to sys.path (app/backend/model.py), so an installed
++real package always wins; the stub is only used when the package is missing.
++
++kaolin (NVIDIA, Apache-2.0): TRELLIS's FlexiCubes does
++"from kaolin.utils.testing import check_tensor" at import time and uses
++nothing else from kaolin. The real kaolin 0.17.0 wheel pulls in warp-lang
++(~135 MB), usd-core, Jupyter widgets, Flask and Dash, so the installer does
++not install it; this stub provides the one function, with the same
++behaviour as kaolin.utils.testing.check_tensor.
+diff --git a/app/stubs/kaolin/__init__.py b/app/stubs/kaolin/__init__.py
+new file mode 100644
+index 0000000..9c42e63
+--- /dev/null
++++ b/app/stubs/kaolin/__init__.py
+@@ -0,0 +1,3 @@
++"""Stub of NVIDIA kaolin: only kaolin.utils.testing.check_tensor (see app/stubs/README.txt)."""
++__version__ = "0.0.0+quokkaform-stub"
++QUOKKAFORM_STUB = True
+diff --git a/app/stubs/kaolin/utils/__init__.py b/app/stubs/kaolin/utils/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/stubs/kaolin/utils/testing.py b/app/stubs/kaolin/utils/testing.py
+new file mode 100644
+index 0000000..c497dde
+--- /dev/null
++++ b/app/stubs/kaolin/utils/testing.py
+@@ -0,0 +1,33 @@
++"""check_tensor as in kaolin.utils.testing (Apache-2.0), the only kaolin
++function TRELLIS's FlexiCubes uses."""
++
++
++def check_tensor(tensor, shape=None, dtype=None, device=None, throw=True):
++    """True if ``tensor`` has the given shape / dtype / device.
++
++    shape: sequence of ints or None (None = any size in that dimension).
++    device: a device type such as "cuda" or "cpu".
++    throw: raise ValueError on a mismatch instead of returning False.
++    """
++    if shape is not None:
++        if len(shape) != tensor.ndim:
++            if throw:
++                raise ValueError(f"tensor have {tensor.ndim} ndim, should have {len(shape)} dim")
++            return False
++        for i, dim in enumerate(shape):
++            if dim is not None and tensor.shape[i] != dim:
++                if throw:
++                    raise ValueError(f"tensor shape is {tensor.shape}, should be {shape}")
++                return False
++    if dtype is not None and dtype != tensor.dtype:
++        if throw:
++            raise TypeError(f"tensor dtype is {tensor.dtype}, should be {dtype}")
++        return False
++    if device is not None:
++        actual = tensor.device.type if hasattr(tensor.device, "type") else str(tensor.device)
++        wanted = device.type if hasattr(device, "type") else str(device).split(":")[0]
++        if actual != wanted:
++            if throw:
++                raise TypeError(f"tensor device is {tensor.device}, should be {device}")
++            return False
++    return True
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 0000000..eb00f40
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,7 @@
++"""Make the repository root importable (``import app...``) for these tests."""
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
+diff --git a/tests/test_kaolin_stub.py b/tests/test_kaolin_stub.py
+new file mode 100644
+index 0000000..1785d64
+--- /dev/null
++++ b/tests/test_kaolin_stub.py
+@@ -0,0 +1,76 @@
++"""The kaolin stub (app/stubs) behaves like kaolin.utils.testing.check_tensor
++and lets TRELLIS's FlexiCubes import without the real kaolin."""
++import importlib
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++torch = pytest.importorskip("torch")
++ROOT = Path(__file__).resolve().parent.parent
++STUBS = ROOT / "app" / "stubs"
++
++
++def _stub_testing():
++    sys.path.insert(0, str(STUBS))
++    try:
++        for name in [m for m in sys.modules if m == "kaolin" or m.startswith("kaolin.")]:
++            del sys.modules[name]
++        return importlib.import_module("kaolin.utils.testing")
++    finally:
++        sys.path.remove(str(STUBS))
++        for name in [m for m in sys.modules if m == "kaolin" or m.startswith("kaolin.")]:
++            del sys.modules[name]
++
++
++def test_check_tensor_shape_dtype_device():
++    check_tensor = _stub_testing().check_tensor
++    t = torch.zeros(5, 3)
++    assert check_tensor(t, (None, 3), throw=False)
++    assert check_tensor(t, (5, 3), dtype=torch.float32, device="cpu")
++    assert not check_tensor(t, (None, 8), throw=False)
++    assert not check_tensor(t, (5,), throw=False)
++    assert not check_tensor(t, dtype=torch.int64, throw=False)
++    assert not check_tensor(t, device="cuda", throw=False)
++    with pytest.raises(ValueError):
++        check_tensor(t, (4, 3))
++    with pytest.raises(TypeError):
++        check_tensor(t, dtype=torch.float16)
++
++
++def test_stub_is_appended_so_real_kaolin_wins():
++    src = (ROOT / "app" / "backend" / "model.py").read_text(encoding="utf-8")
++    assert "sys.path.append(str(STUBS_PATH))" in src
++
++
++TRELLIS = Path(os.environ.get("TRELLIS_SRC", "/workspace/TRELLIS"))
++
++
++@pytest.mark.skipif(not (TRELLIS / "trellis" / "representations" / "mesh" / "flexicubes" / "flexicubes.py").is_file(),
++                    reason="TRELLIS source with FlexiCubes not available")
++def test_flexicubes_imports_with_stub():
++    # Import FlexiCubes as a namespace package (skips trellis/__init__ and its
++    # heavy dependencies); its "from kaolin.utils.testing import check_tensor"
++    # must resolve to the stub.
++    mesh_dir = TRELLIS / "trellis" / "representations" / "mesh"
++    code = ("import sys; sys.path.insert(0, %r); sys.path.append(%r);\n"
++            "import importlib.util as u\n"
++            "assert u.find_spec('kaolin').origin.startswith(%r), 'real kaolin installed, stub not exercised'\n"
++            "from flexicubes.flexicubes import FlexiCubes\n"
++            "import torch, itertools\n"
++            "fc = FlexiCubes(device='cpu'); r = 4\n"
++            "g = torch.stack(torch.meshgrid(*[torch.arange(r + 1)] * 3, indexing='ij'), -1).reshape(-1, 3)\n"
++            "idx = lambda x, y, z: (x * (r + 1) + y) * (r + 1) + z\n"
++            "cubes = torch.tensor([[idx(x + dx, y + dy, z + dz) for dz, dy, dx in "
++            "itertools.product((0, 1), repeat=3)] for x in range(r) for y in range(r) for z in range(r)])\n"
++            "v = g.float() / r - 0.5; sdf = v.norm(dim=1) - 0.3\n"
++            "verts, faces, _, _ = fc(v, sdf, cubes, r)\n"
++            "assert verts.shape[0] > 0 and faces.shape[1] == 3, (verts.shape, faces.shape)\n"
++            "print('ok')") % (str(mesh_dir), str(STUBS), str(STUBS))
++    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
++    if "real kaolin installed" in r.stderr:
++        pytest.skip("real kaolin installed in this environment")
++    assert r.returncode == 0, r.stderr[-2000:]
++    assert "ok" in r.stdout
+-- 
+2.47.3
+
+
+From d94d7933fb7b8545a34fec847ecc57f19559ad70 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 21:54:30 +0800
+Subject: [PATCH 04/10] Portable paths: app/backend/paths.py (per-user data in
+ %LOCALAPPDATA%\QuokkaForm: models, runtime, logs, webview), model caches
+ moved to the models folder while models already in the old HF / torch /
+ ~/.u2net caches keep being used; app/version.py; tests
+
+---
+ app/backend/paths.py   | 143 +++++++++++++++++++++++++++++++++++++++++
+ app/download_models.py |  11 +++-
+ app/main.py            |  10 ++-
+ app/version.py         |   4 ++
+ tests/test_paths.py    |  99 ++++++++++++++++++++++++++++
+ 5 files changed, 264 insertions(+), 3 deletions(-)
+ create mode 100644 app/backend/paths.py
+ create mode 100644 app/version.py
+ create mode 100644 tests/test_paths.py
+
+diff --git a/app/backend/paths.py b/app/backend/paths.py
+new file mode 100644
+index 0000000..559f19a
+--- /dev/null
++++ b/app/backend/paths.py
+@@ -0,0 +1,143 @@
++"""
++Where QuokkaForm keeps its files, independent of the folder it runs from.
++
++Install folder (read-only for the app): the folder that contains ``app/``,
++e.g. %LOCALAPPDATA%\\Programs\\QuokkaForm or the dev checkout.
++
++Per-user data (Windows):
++    %LOCALAPPDATA%\\QuokkaForm\\models     model downloads (HF / torch hub / rembg)
++    %LOCALAPPDATA%\\QuokkaForm\\runtime    Python 3.10 + venv made by the setup
++    %LOCALAPPDATA%\\QuokkaForm\\logs       desktop window and setup logs
++    %LOCALAPPDATA%\\QuokkaForm\\webview    WebView2 profile of the desktop window
++    %APPDATA%\\QuokkaForm\\settings.json   remembered settings (settings_store)
++    Documents\\QuokkaForm\\outputs          every run (history)
++
++Models: ``apply_env()`` points HF_HOME / HF_HUB_CACHE, TORCH_HOME and
++U2NET_HOME at the models folder, BUT if the old default caches
++(~/.cache/huggingface/hub, ~/.cache/torch, ~/.u2net) already hold more of
++QuokkaForm's models than the new folder, that cache keeps being used, so
++nothing is downloaded twice (about 4.3 GB). Variables the user already set
++are never changed. It runs on Windows only (Linux / Docker keep the usual
++defaults) unless IMG3D_DATA_DIR is set.
++
++This module must stay import-light (no torch / gradio / huggingface_hub):
++it runs before those read their cache variables.
++"""
++
++import os
++import sys
++from pathlib import Path
++from typing import Dict, Iterable, Mapping, MutableMapping, Optional
++
++APP_DIR_NAME = "QuokkaForm"
++
++# Files / folders that show a cache already holds one of our models.
++HF_MARKERS = ("models--microsoft--TRELLIS-image-large", "models--facebook--sam2.1-hiera-small")
++TORCH_MARKERS = ("hub/checkpoints/dinov2_vitl14_reg4_pretrain.pth", "hub/facebookresearch_dinov2_main/hubconf.py")
++U2NET_MARKERS = ("birefnet-general-lite.onnx", "birefnet-general.onnx", "u2net.onnx", "isnet-general-use.onnx")
++HF_VARS = ("HF_HOME", "HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE")
++
++
++def app_root() -> Path:
++    """The folder that contains ``app/`` (install folder or dev checkout)."""
++    return Path(__file__).resolve().parent.parent.parent
++
++
++def _env(env: Optional[Mapping[str, str]]) -> Mapping[str, str]:
++    return os.environ if env is None else env
++
++
++def _is_windows(platform: Optional[str]) -> bool:
++    return (platform or sys.platform).startswith("win")
++
++
++def _home(env: Mapping[str, str]) -> Path:
++    for key in ("USERPROFILE", "HOME"):
++        if env.get(key):
++            return Path(env[key])
++    return Path.home()
++
++
++def data_dir(env: Optional[Mapping[str, str]] = None, platform: Optional[str] = None) -> Path:
++    """Per-user data folder (models, runtime, logs, webview profile)."""
++    env = _env(env)
++    if env.get("IMG3D_DATA_DIR"):
++        return Path(env["IMG3D_DATA_DIR"])
++    if _is_windows(platform) and env.get("LOCALAPPDATA"):
++        return Path(env["LOCALAPPDATA"]) / APP_DIR_NAME
++    base = Path(env["XDG_DATA_HOME"]) if env.get("XDG_DATA_HOME") else _home(env) / ".local" / "share"
++    return base / "quokkaform"
++
++
++def models_dir(env=None, platform=None) -> Path:
++    return data_dir(env, platform) / "models"
++
++
++def logs_dir(env=None, platform=None) -> Path:
++    return data_dir(env, platform) / "logs"
++
++
++def runtime_dir(env=None, platform=None) -> Path:
++    return data_dir(env, platform) / "runtime"
++
++
++def webview_dir(env=None, platform=None) -> Path:
++    return data_dir(env, platform) / "webview"
++
++
++def legacy_caches(env: Optional[Mapping[str, str]] = None) -> Dict[str, Path]:
++    """The default cache folders used before (and by other tools)."""
++    env = _env(env)
++    home = _home(env)
++    cache = Path(env["XDG_CACHE_HOME"]) if env.get("XDG_CACHE_HOME") else home / ".cache"
++    u2_base = Path(env["XDG_DATA_HOME"]) if env.get("XDG_DATA_HOME") else home
++    return {"hf_hub": cache / "huggingface" / "hub", "torch": cache / "torch", "u2net": u2_base / ".u2net"}
++
++
++def count_markers(folder: Path, markers: Iterable[str]) -> int:
++    """How many of ``markers`` (relative paths) exist under ``folder``."""
++    return sum(1 for m in markers if (folder / m).exists())
++
++
++def _pick(new: Path, legacy: Path, markers) -> Path:
++    """The legacy cache if it holds more of our models than the new folder."""
++    return legacy if count_markers(legacy, markers) > count_markers(new, markers) else new
++
++
++def model_env(env: Optional[Mapping[str, str]] = None, platform: Optional[str] = None) -> Dict[str, str]:
++    """Cache variables to set (only ones the user has not set already)."""
++    env = _env(env)
++    if not (_is_windows(platform) or env.get("IMG3D_DATA_DIR")):
++        return {}
++    models = models_dir(env, platform)
++    legacy = legacy_caches(env)
++    out: Dict[str, str] = {}
++    if not any(env.get(v) for v in HF_VARS):
++        hf_home = models / "huggingface"
++        out["HF_HOME"] = str(hf_home)
++        hub = _pick(hf_home / "hub", legacy["hf_hub"], HF_MARKERS)
++        if hub != hf_home / "hub":
++            out["HF_HUB_CACHE"] = str(hub)
++    if not env.get("TORCH_HOME"):
++        out["TORCH_HOME"] = str(_pick(models / "torch", legacy["torch"], TORCH_MARKERS))
++    if not env.get("U2NET_HOME"):
++        out["U2NET_HOME"] = str(_pick(models / "u2net", legacy["u2net"], U2NET_MARKERS))
++    return out
++
++
++def apply_env(env: Optional[MutableMapping[str, str]] = None, platform: Optional[str] = None) -> Dict[str, str]:
++    """Set the model cache variables in ``env`` (default os.environ); returns what was set."""
++    target = os.environ if env is None else env
++    values = model_env(target, platform)
++    target.update(values)
++    return values
++
++
++def describe(env: Optional[Mapping[str, str]] = None) -> str:
++    """One line per location, for the log / setup output."""
++    env = _env(env)
++    rows = [("Install folder", app_root()), ("Data folder", data_dir(env))]
++    for key in ("HF_HOME", "HF_HUB_CACHE", "TORCH_HOME", "U2NET_HOME"):
++        if env.get(key):
++            rows.append((key, env[key]))
++    return "\n".join(f"{k}: {v}" for k, v in rows)
+diff --git a/app/download_models.py b/app/download_models.py
+index 20efa33..7c9b246 100644
+--- a/app/download_models.py
++++ b/app/download_models.py
+@@ -10,7 +10,9 @@ Without this, each model downloads silently the first time it is used
+ (about 4.3 GB in total, TRELLIS alone 2.8 GB), which makes the first
+ generation look stuck. The installer runs it after installing packages.
+ 
+-Models and where they are stored:
++Models and where they are stored (on Windows under
++%LOCALAPPDATA%\\QuokkaForm\\models, see app/backend/paths.py; models already in
++the old default caches below are used from there and not downloaded again):
+ - TRELLIS-image-large (microsoft, MIT): Hugging Face cache (HF_HOME,
+   default ~/.cache/huggingface).
+ - DINOv2 ViT-L/14 with registers (Meta, Apache-2.0), TRELLIS's image
+@@ -31,6 +33,13 @@ from dataclasses import dataclass
+ from pathlib import Path
+ from typing import Callable, List, Optional
+ 
++if __package__ in (None, ""):  # run as a file: make "app" importable
++    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++
++from app.backend import paths
++
++paths.apply_env()  # noqa: E402 - before huggingface_hub / torch are imported
++
+ MB = 1024 ** 2
+ 
+ TRELLIS_REPO = "microsoft/TRELLIS-image-large"
+diff --git a/app/main.py b/app/main.py
+index 81f5c0c..802ce4b 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parent.parent
+ if str(ROOT) not in sys.path:
+     sys.path.insert(0, str(ROOT))
+ 
++# Model caches in %LOCALAPPDATA%\QuokkaForm\models (old caches still found).
++# Must run before gradio / huggingface_hub / torch read these variables.
++from app.backend import paths  # noqa: E402
++
++paths.apply_env()
++
+ import gradio as gr
+ from PIL import Image
+ from app import download_models, selection_ui, ui_theme
+@@ -514,7 +520,7 @@ with gr.Blocks(title=ui_theme.TITLE, theme=ui_theme.THEME, css=ui_theme.CSS, js=
+                         choices=[(label, key) for key, (label, _) in BG_MODELS.items()],
+                         value=DEFAULT_BG_MODEL,
+                         label="Background model",
+-                        info="Downloaded once on first use (to ~/.u2net). Runs on the CPU: BiRefNet lite takes "
++                        info="Downloaded once on first use (to the QuokkaForm models folder). Runs on the CPU: BiRefNet lite takes "
+                         "~10 s per photo, BiRefNet full ~15-20 s, U2-Net / IS-Net under 1 s. BiRefNet needs ~6-7 GB of RAM "
+                         "while it runs (freed before TRELLIS starts).",
+                     )
+@@ -738,7 +744,7 @@ with gr.Blocks(title=ui_theme.TITLE, theme=ui_theme.THEME, css=ui_theme.CSS, js=
+             gr.Markdown("Setup", elem_classes="qf-section-title")
+             with gr.Accordion("Models", open=True):
+                 gr.Markdown(
+-                    "All models QuokkaForm uses, downloaded once (Hugging Face cache, torch hub cache and `~/.u2net`). "
++                    "All models QuokkaForm uses, downloaded once into the QuokkaForm models folder (`%LOCALAPPDATA%\\QuokkaForm\\models`; models already in the old Hugging Face / torch / `~/.u2net` caches are used from there). "
+                     "Downloading them here, or with `start.bat --download-models`, avoids a long silent wait on the "
+                     "first generation. Other background models (BiRefNet full, IS-Net, U2-Net) download when first "
+                     "chosen."
+diff --git a/app/version.py b/app/version.py
+new file mode 100644
+index 0000000..dd95b8b
+--- /dev/null
++++ b/app/version.py
+@@ -0,0 +1,4 @@
++"""QuokkaForm version (shown by the installer, the desktop window and the logs)."""
++APP_NAME = "QuokkaForm"
++VERSION = "0.9.0"
++PUBLISHER = "Perth Resoles"
+diff --git a/tests/test_paths.py b/tests/test_paths.py
+new file mode 100644
+index 0000000..6e895b5
+--- /dev/null
++++ b/tests/test_paths.py
+@@ -0,0 +1,99 @@
++"""app.backend.paths: per-user folders and model cache variables (old caches reused)."""
++from pathlib import Path
++
++from app.backend import paths
++
++
++def _win_env(tmp_path, **extra):
++    env = {"LOCALAPPDATA": str(tmp_path / "Local"), "USERPROFILE": str(tmp_path / "user")}
++    env.update(extra)
++    return env
++
++
++def _touch(p: Path):
++    p.parent.mkdir(parents=True, exist_ok=True)
++    p.write_bytes(b"x")
++
++
++def test_windows_folders(tmp_path):
++    env = _win_env(tmp_path)
++    base = tmp_path / "Local" / "QuokkaForm"
++    assert paths.data_dir(env, "win32") == base
++    assert paths.models_dir(env, "win32") == base / "models"
++    assert paths.logs_dir(env, "win32") == base / "logs"
++    assert paths.runtime_dir(env, "win32") == base / "runtime"
++    assert paths.webview_dir(env, "win32") == base / "webview"
++
++
++def test_data_dir_override_and_linux(tmp_path):
++    assert paths.data_dir({"IMG3D_DATA_DIR": str(tmp_path / "d")}, "win32") == tmp_path / "d"
++    assert paths.data_dir({"HOME": str(tmp_path)}, "linux") == tmp_path / ".local" / "share" / "quokkaform"
++    assert paths.data_dir({"HOME": str(tmp_path), "XDG_DATA_HOME": str(tmp_path / "x")}, "linux") == tmp_path / "x" / "quokkaform"
++
++
++def test_fresh_windows_uses_models_folder(tmp_path):
++    env = _win_env(tmp_path)
++    models = tmp_path / "Local" / "QuokkaForm" / "models"
++    assert paths.model_env(env, "win32") == {
++        "HF_HOME": str(models / "huggingface"),
++        "TORCH_HOME": str(models / "torch"),
++        "U2NET_HOME": str(models / "u2net"),
++    }
++
++
++def test_old_caches_are_reused(tmp_path):
++    env = _win_env(tmp_path)
++    user = tmp_path / "user"
++    (user / ".cache" / "huggingface" / "hub" / "models--microsoft--TRELLIS-image-large").mkdir(parents=True)
++    _touch(user / ".cache" / "torch" / "hub" / "checkpoints" / "dinov2_vitl14_reg4_pretrain.pth")
++    _touch(user / ".u2net" / "birefnet-general-lite.onnx")
++    out = paths.model_env(env, "win32")
++    models = tmp_path / "Local" / "QuokkaForm" / "models"
++    assert out["HF_HOME"] == str(models / "huggingface")          # token etc. in the new place
++    assert out["HF_HUB_CACHE"] == str(user / ".cache" / "huggingface" / "hub")
++    assert out["TORCH_HOME"] == str(user / ".cache" / "torch")
++    assert out["U2NET_HOME"] == str(user / ".u2net")
++
++
++def test_new_folder_wins_when_it_has_as_many_models(tmp_path):
++    env = _win_env(tmp_path)
++    user = tmp_path / "user"
++    models = tmp_path / "Local" / "QuokkaForm" / "models"
++    _touch(user / ".u2net" / "birefnet-general-lite.onnx")
++    _touch(models / "u2net" / "birefnet-general-lite.onnx")
++    (models / "huggingface" / "hub" / "models--microsoft--TRELLIS-image-large").mkdir(parents=True)
++    (user / ".cache" / "huggingface" / "hub" / "models--microsoft--TRELLIS-image-large").mkdir(parents=True)
++    out = paths.model_env(env, "win32")
++    assert out["U2NET_HOME"] == str(models / "u2net")
++    assert "HF_HUB_CACHE" not in out
++
++
++def test_user_variables_are_kept(tmp_path):
++    env = _win_env(tmp_path, HF_HOME="D:/hf", TORCH_HOME="D:/torch", U2NET_HOME="D:/u2")
++    assert paths.model_env(env, "win32") == {}
++    env = _win_env(tmp_path, HF_HUB_CACHE="D:/hub")
++    assert "HF_HOME" not in paths.model_env(env, "win32")
++
++
++def test_linux_untouched_unless_data_dir_set(tmp_path):
++    assert paths.model_env({"HOME": str(tmp_path)}, "linux") == {}
++    out = paths.model_env({"HOME": str(tmp_path), "IMG3D_DATA_DIR": str(tmp_path / "d")}, "linux")
++    assert out["TORCH_HOME"] == str(tmp_path / "d" / "models" / "torch")
++
++
++def test_apply_env_is_idempotent(tmp_path):
++    env = _win_env(tmp_path)
++    first = paths.apply_env(env, "win32")
++    assert env["TORCH_HOME"] == first["TORCH_HOME"]
++    assert paths.apply_env(env, "win32") == {}
++
++
++def test_app_root_contains_app():
++    assert (paths.app_root() / "app" / "backend" / "paths.py").is_file()
++
++
++def test_main_applies_env_before_gradio_import():
++    src = (paths.app_root() / "app" / "main.py").read_text(encoding="utf-8")
++    assert src.index("paths.apply_env()") < src.index("import gradio")
++    src = (paths.app_root() / "app" / "download_models.py").read_text(encoding="utf-8")
++    assert "paths.apply_env()" in src
+-- 
+2.47.3
+
+
+From 8712cde45d6cf8836b0bef1deb370855f59c3a3a Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:00:00 +0800
+Subject: [PATCH 05/10] Messages: name 'QuokkaForm Setup (repair)' and the log
+ folder in the installed app, start.bat and the console window in the dev
+ folder
+
+---
+ app/backend/envcheck.py |  5 +++--
+ app/backend/errors.py   | 10 ++++++----
+ app/backend/paths.py    | 26 ++++++++++++++++++++++++++
+ app/main.py             |  4 ++--
+ app/selection_ui.py     |  5 +++--
+ tests/test_paths.py     | 14 ++++++++++++++
+ 6 files changed, 54 insertions(+), 10 deletions(-)
+
+diff --git a/app/backend/envcheck.py b/app/backend/envcheck.py
+index 69a40b5..d1b7600 100644
+--- a/app/backend/envcheck.py
++++ b/app/backend/envcheck.py
+@@ -15,6 +15,7 @@ import sys
+ from pathlib import Path
+ from typing import List, Optional, Tuple
+ 
++from . import paths
+ from .errors import MIN_DRIVER, MIN_DRIVER_TEXT
+ 
+ RECOMMENDED_VRAM_GB = 12
+@@ -118,14 +119,14 @@ def environment_report(models_missing_mb: float = 0.0, model_dir: Optional[Path]
+             r["capability"] = f"{p.major}.{p.minor}"
+     except Exception as e:  # broken torch install
+         problems.append(("error", f"PyTorch could not be loaded ({type(e).__name__}: {e}). Run "
+-                                  "'start.bat --reinstall'."))
++                                  f"{paths.repair_command()}."))
+     smi = _nvidia_smi()
+     if smi:
+         r["driver"] = smi["driver"]
+         r["gpu"] = r["gpu"] or smi["name"]
+         r["vram_gb"] = r["vram_gb"] or smi["vram_gb"]
+     if r["torch"] and not r["torch_cuda"]:
+-        problems.append(("error", "PyTorch is a CPU-only build, so TRELLIS cannot run. Run 'start.bat --reinstall' "
++        problems.append(("error", f"PyTorch is a CPU-only build, so TRELLIS cannot run. Run {paths.repair_command()} "
+                                   "to install the CUDA 12.4 build."))
+     elif r["torch"] and not r["cuda_available"]:
+         if smi is None:
+diff --git a/app/backend/errors.py b/app/backend/errors.py
+index 3bdd604..7138ac2 100644
+--- a/app/backend/errors.py
++++ b/app/backend/errors.py
+@@ -13,11 +13,13 @@ text. The full traceback always goes to the console.
+ import errno
+ from typing import Optional
+ 
++from . import paths
++
+ # CUDA 12.4 needs at least these NVIDIA driver versions (CUDA 12.4 release notes).
+ MIN_DRIVER = {"win32": (551, 61), "linux": (550, 54, 14)}
+ MIN_DRIVER_TEXT = "551.61 (Windows) / 550.54 (Linux)"
+ 
+-CONSOLE = "Details are in the console window."
++CONSOLE = paths.details_hint()  # console window (start.bat) or log file (installed app)
+ 
+ 
+ def _chain(exc: BaseException):
+@@ -134,19 +136,19 @@ def friendly_message(exc: BaseException, action: str = "Generation", settings: O
+         return (f"{action} failed: no usable NVIDIA GPU was found (CUDA is not available). QuokkaForm needs an "
+                 "NVIDIA graphics card with an up-to-date driver. If you have one, update the driver from "
+                 "https://www.nvidia.com/drivers; if the console says PyTorch is a CPU-only build, run "
+-                f"'start.bat --reinstall'. {CONSOLE}")
++                f"{paths.repair_command()}. {CONSOLE}")
+     if kind == "old_gpu":
+         return (f"{action} failed: this graphics card is too old for a GPU feature in use (flash-attn needs an "
+                 "RTX 30xx or newer). Close QuokkaForm, set ATTN_BACKEND=xformers (see README) and start again. "
+                 f"{CONSOLE}")
+     if kind == "corrupt":
+         return (f"{action} failed: a downloaded model file is damaged (probably an interrupted download). "
+-                "Run 'start.bat --download-models' (or Setup > Download models) to repair it; if that does not "
++                f"Run {paths.download_command()} (or Setup > Download models) to repair it; if that does not "
+                 "help, delete the file named in the console and download again. " + CONSOLE)
+     if kind == "download":
+         return (f"{action} failed: a model download did not complete ({_short(raw)}). Check the internet "
+                 "connection and try again: finished files are kept and the download continues where it "
+-                "stopped. You can also download everything up front with 'start.bat --download-models' "
++                f"stopped. You can also download everything up front with {paths.download_command()} "
+                 f"or Setup > Download models. {CONSOLE}")
+     if kind == "image":
+         return (f"{action} failed: the image could not be used ({_short(raw)}). Use a normal JPG or PNG photo "
+diff --git a/app/backend/paths.py b/app/backend/paths.py
+index 559f19a..8b7070f 100644
+--- a/app/backend/paths.py
++++ b/app/backend/paths.py
+@@ -141,3 +141,29 @@ def describe(env: Optional[Mapping[str, str]] = None) -> str:
+         if env.get(key):
+             rows.append((key, env[key]))
+     return "\n".join(f"{k}: {v}" for k, v in rows)
++
++
++# ------------------------------------------------- wording for messages
++
++def is_dev_checkout() -> bool:
++    """True when running from the source folder (start.bat next to app/),
++    False for the installed / portable app."""
++    return (app_root() / "start.bat").is_file()
++
++
++def repair_command() -> str:
++    """How to reinstall the Python packages, for error messages."""
++    return "'start.bat --reinstall'" if is_dev_checkout() else "'QuokkaForm Setup (repair)' from the Start menu"
++
++
++def download_command() -> str:
++    """How to download the models outside the app, for messages."""
++    return ("'start.bat --download-models'" if is_dev_checkout()
++            else "'QuokkaForm Setup (repair)' from the Start menu (it offers the model download)")
++
++
++def details_hint() -> str:
++    """Where the full error text is."""
++    if is_dev_checkout():
++        return "Details are in the console window."
++    return f"Details are in the newest log file in {logs_dir()}."
+diff --git a/app/main.py b/app/main.py
+index 802ce4b..7384e2a 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -254,7 +254,7 @@ def _banner_text() -> str:
+             f"Missing: {', '.join(r['label'] for r in missing)}. Without them the first generation (or the "
+             "first Select-object click) downloads them silently and looks stuck for many minutes. Open "
+             "**Setup > Models** and press **Download missing models** (progress shown), or close QuokkaForm and "
+-            "run `start.bat --download-models`."
++            f"run {paths.download_command()}."
+         )
+     return "\n\n".join(parts)
+ 
+@@ -745,7 +745,7 @@ with gr.Blocks(title=ui_theme.TITLE, theme=ui_theme.THEME, css=ui_theme.CSS, js=
+             with gr.Accordion("Models", open=True):
+                 gr.Markdown(
+                     "All models QuokkaForm uses, downloaded once into the QuokkaForm models folder (`%LOCALAPPDATA%\\QuokkaForm\\models`; models already in the old Hugging Face / torch / `~/.u2net` caches are used from there). "
+-                    "Downloading them here, or with `start.bat --download-models`, avoids a long silent wait on the "
++                    f"Downloading them here, or with {paths.download_command()}, avoids a long silent wait on the "
+                     "first generation. Other background models (BiRefNet full, IS-Net, U2-Net) download when first "
+                     "chosen."
+                 )
+diff --git a/app/selection_ui.py b/app/selection_ui.py
+index 109b938..ad96807 100644
+--- a/app/selection_ui.py
++++ b/app/selection_ui.py
+@@ -21,6 +21,7 @@ import gradio as gr
+ import numpy as np
+ from PIL import Image
+ 
++from app.backend import paths
+ from app.backend import selection as sam
+ from app.backend.background import working_image
+ from app.backend.errors import friendly_message
+@@ -96,7 +97,7 @@ def _recompute(item) -> None:
+         item["mask"], item["score"] = sam.predict_mask(item["image"], points, box)
+     except ImportError as e:
+         raise gr.Error(
+-            f"SAM 2 is not installed ({e}). Close the app and run start.bat again to install it."
++            f"SAM 2 is not installed ({e}). Close the app and run {paths.repair_command()} to install it."
+         ) from None
+     except Exception as e:  # e.g. the first-use SAM 2 download failed
+         import traceback
+@@ -229,7 +230,7 @@ def auto(state, photo, bg_model=None):
+         sel, note = sam.auto_select(item["image"], bg_model or None)
+     except ImportError as e:
+         raise gr.Error(
+-            f"SAM 2 is not installed ({e}). Close the app and run start.bat again to install it."
++            f"SAM 2 is not installed ({e}). Close the app and run {paths.repair_command()} to install it."
+         ) from None
+     except Exception as e:
+         import traceback
+diff --git a/tests/test_paths.py b/tests/test_paths.py
+index 6e895b5..874da55 100644
+--- a/tests/test_paths.py
++++ b/tests/test_paths.py
+@@ -97,3 +97,17 @@ def test_main_applies_env_before_gradio_import():
+     assert src.index("paths.apply_env()") < src.index("import gradio")
+     src = (paths.app_root() / "app" / "download_models.py").read_text(encoding="utf-8")
+     assert "paths.apply_env()" in src
++
++
++def test_message_wording_dev_vs_installed(tmp_path, monkeypatch):
++    monkeypatch.setattr(paths, "app_root", lambda: tmp_path)
++    monkeypatch.setenv("IMG3D_DATA_DIR", str(tmp_path / "data"))
++    assert not paths.is_dev_checkout()
++    assert "QuokkaForm Setup (repair)" in paths.repair_command()
++    assert "QuokkaForm Setup (repair)" in paths.download_command()
++    assert str(tmp_path / "data" / "logs") in paths.details_hint()
++    (tmp_path / "start.bat").write_text("@echo off")
++    assert paths.is_dev_checkout()
++    assert paths.repair_command() == "'start.bat --reinstall'"
++    assert paths.download_command() == "'start.bat --download-models'"
++    assert paths.details_hint() == "Details are in the console window."
+-- 
+2.47.3
+
+
+From 647ec1cfbe62d9bf848cf45aba2b056d4ab4b5e9 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:00:00 +0800
+Subject: [PATCH 06/10] Desktop window: app/desktop.py shows the UI in a native
+ pywebview (WebView2) window, never a browser
+
+- title 'QuokkaForm - Images To Mesh', quokkaform.ico, 1400x900 default,
+  size / maximised state remembered (%APPDATA%\QuokkaForm\window.json)
+- splash page while the server starts in-process; closing the window stops
+  the server and ends the process (nothing left on port 7860)
+- single instance: named mutex + bring the open window to the front; a
+  QuokkaForm server already on the port gets a window only; another program
+  on the port: next free port 7861-7879
+- WebView2 runtime check with a clear message and Microsoft's link
+- Gradio downloads go through a Save dialog; links to web pages only show
+  their address (no browser); Gradio footer hidden
+- stdout / stderr to %LOCALAPPDATA%\QuokkaForm\logs (pythonw has no console)
+- app/backend/instance.py: port probe (QuokkaForm via /config title), port
+  choice, wait-until-ready
+- start.bat --desktop for the dev folder
+- tests: instance logic with real sockets, desktop helpers, end-to-end runs
+  with a fake pywebview against the real Gradio server (mock TRELLIS)
+---
+ app/backend/instance.py         | 108 ++++++++
+ app/desktop.py                  | 469 ++++++++++++++++++++++++++++++++
+ start.bat                       |  11 +-
+ tests/fakes/webview/__init__.py |  77 ++++++
+ tests/test_desktop.py           | 176 ++++++++++++
+ tests/test_instance.py          | 103 +++++++
+ 6 files changed, 943 insertions(+), 1 deletion(-)
+ create mode 100644 app/backend/instance.py
+ create mode 100644 app/desktop.py
+ create mode 100644 tests/fakes/webview/__init__.py
+ create mode 100644 tests/test_desktop.py
+ create mode 100644 tests/test_instance.py
+
+diff --git a/app/backend/instance.py b/app/backend/instance.py
+new file mode 100644
+index 0000000..e6172f5
+--- /dev/null
++++ b/app/backend/instance.py
+@@ -0,0 +1,108 @@
++"""
++Single-instance and port logic for the desktop launcher (no GUI code here).
++
++probe(host, port):
++    "free"        nothing listens on the port
++    "quokkaform"  a QuokkaForm server answers (its Gradio /config title)
++    "other"       something else listens (another app, a different Gradio app)
++
++choose_port(host, preferred): which port to use and whether a QuokkaForm
++server is already there (then the launcher only opens a window to it).
++"""
++
++import json
++import socket
++import time
++import urllib.error
++import urllib.request
++from typing import Callable, Optional, Tuple
++
++APP_TITLE = "QuokkaForm - Images To Mesh"
++DEFAULT_PORT = 7860
++PORT_SPAN = 20  # 7860-7879 are tried before giving up
++
++
++def url_for(host: str, port: int) -> str:
++    # 0.0.0.0 (shared on the network) is reached locally through 127.0.0.1
++    local = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
++    return f"http://{local}:{port}/"
++
++
++def port_in_use(host: str, port: int, timeout: float = 0.5) -> bool:
++    """True if something accepts TCP connections on host:port."""
++    local = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
++    try:
++        with socket.create_connection((local, port), timeout=timeout):
++            return True
++    except OSError:
++        return False
++
++
++def can_bind(host: str, port: int) -> bool:
++    """True if this process could listen on host:port right now."""
++    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++    try:
++        s.bind((host or "127.0.0.1", port))
++        return True
++    except OSError:
++        return False
++    finally:
++        s.close()
++
++
++def is_quokkaform(host: str, port: int, timeout: float = 2.0) -> bool:
++    """True if the server on host:port is a QuokkaForm Gradio app."""
++    try:
++        with urllib.request.urlopen(url_for(host, port) + "config", timeout=timeout) as r:
++            data = json.loads(r.read(8 * 1024 * 1024).decode("utf-8", "replace"))
++    except (OSError, ValueError, urllib.error.URLError):
++        return False
++    title = data.get("title") if isinstance(data, dict) else None
++    return isinstance(title, str) and title.startswith("QuokkaForm")
++
++
++def probe(host: str, port: int) -> str:
++    if not port_in_use(host, port):
++        return "free" if can_bind(host, port) else "other"
++    return "quokkaform" if is_quokkaform(host, port) else "other"
++
++
++def choose_port(host: str, preferred: int = DEFAULT_PORT, span: int = PORT_SPAN,
++                probe_fn: Callable[[str, int], str] = probe) -> Tuple[str, Optional[int]]:
++    """("existing", port) if QuokkaForm already runs on the preferred port,
++    ("new", port) with the first free port from preferred upwards, or
++    ("none", None) if preferred..preferred+span-1 are all taken.
++
++    Only the preferred port is checked for a running QuokkaForm: another
++    QuokkaForm on a fallback port belongs to a different launch."""
++    for i in range(span):
++        port = preferred + i
++        state = probe_fn(host, port)
++        if state == "quokkaform" and i == 0:
++            return "existing", port
++        if state == "free":
++            return "new", port
++    return "none", None
++
++
++def wait_until_ready(url: str, timeout: float = 900.0, interval: float = 0.5,
++                     alive: Callable[[], bool] = lambda: True,
++                     opener: Callable[[str], bool] = None) -> bool:
++    """Poll ``url`` until it answers HTTP 200; False on timeout or when
++    ``alive()`` turns False (the server thread died)."""
++    def _get(u: str) -> bool:
++        try:
++            with urllib.request.urlopen(u, timeout=2.0) as r:
++                return r.status == 200
++        except (OSError, urllib.error.URLError, ValueError):
++            return False
++
++    opener = opener or _get
++    deadline = time.monotonic() + timeout
++    while time.monotonic() < deadline:
++        if opener(url):
++            return True
++        if not alive():
++            return False
++        time.sleep(interval)
++    return False
+diff --git a/app/desktop.py b/app/desktop.py
+new file mode 100644
+index 0000000..ed11a63
+--- /dev/null
++++ b/app/desktop.py
+@@ -0,0 +1,469 @@
++"""
++QuokkaForm desktop app: the Gradio UI in its own native window (pywebview,
++Microsoft Edge WebView2 on Windows). No web browser is ever opened.
++
++    pythonw app\\desktop.py          what the Start menu shortcut runs (no console)
++    python  app\\desktop.py --debug  console + WebView2 dev tools (development)
++
++What it does:
++1. Model cache variables (app/backend/paths.py), log file in
++   %LOCALAPPDATA%\\QuokkaForm\\logs (stdout / stderr go there; pythonw has none).
++2. Single instance: a second launch brings the open window to the front.
++   If a QuokkaForm server already answers on the port (e.g. start.bat in
++   dev mode) only a window is opened to it; if the port is taken by
++   another program the next free port (up to 7879) is used.
++3. Shows a "Starting..." page at once, starts the server in this process
++   (background thread), loads the UI when the server answers.
++4. Closing the window stops the server and ends the process, so nothing
++   stays running on the port.
++"""
++
++import argparse
++import base64
++import io
++import json
++import os
++import sys
++import threading
++import time
++import traceback
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from app.backend import instance, paths  # noqa: E402  (light imports only)
++from app.version import APP_NAME, PUBLISHER, VERSION  # noqa: E402
++
++TITLE = instance.APP_TITLE
++ASSETS = ROOT / "app" / "assets"
++ICON = ASSETS / "quokkaform.ico"
++APP_USER_MODEL_ID = "PerthResoles.QuokkaForm"
++MUTEX_NAME = "QuokkaFormDesktop"          # also AppMutex in installer/QuokkaForm.iss
++WEBVIEW2_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
++DEFAULT_SIZE = (1400, 900)
++MIN_SIZE = (900, 600)
++KEEP_LOGS = 10
++WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"  # Evergreen runtime
++
++
++# ------------------------------------------------------------------ logging
++
++class _Tee:
++    """Write to the log file and, when there is one, the console."""
++
++    def __init__(self, log, console):
++        self.log, self.console = log, console
++
++    def write(self, s):
++        try:
++            self.log.write(s)
++            self.log.flush()
++        except (OSError, ValueError):
++            pass
++        if self.console is not None:
++            try:
++                self.console.write(s)
++            except (OSError, ValueError, UnicodeError):
++                pass
++        return len(s)
++
++    def flush(self):
++        for f in (self.log, self.console):
++            try:
++                if f is not None:
++                    f.flush()
++            except (OSError, ValueError):
++                pass
++
++    def isatty(self):
++        return False
++
++    def fileno(self):  # some libraries ask; there is no real descriptor
++        raise io.UnsupportedOperation("fileno")
++
++
++def prune_logs(folder: Path, keep: int = KEEP_LOGS, prefix: str = "quokkaform-") -> None:
++    """Delete all but the ``keep`` newest ``<prefix>*.log`` files."""
++    logs = sorted(folder.glob(prefix + "*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
++    for old in logs[keep:]:
++        try:
++            old.unlink()
++        except OSError:
++            pass
++
++
++def setup_logging(folder: Path = None) -> Path:
++    """Send stdout / stderr to logs/quokkaform-<time>.log (and the console if any)."""
++    folder = folder or paths.logs_dir()
++    folder.mkdir(parents=True, exist_ok=True)
++    prune_logs(folder, KEEP_LOGS - 1)
++    log_path = folder / time.strftime("quokkaform-%Y%m%d-%H%M%S.log")
++    log = open(log_path, "a", encoding="utf-8", errors="replace", buffering=1)
++    sys.stdout = _Tee(log, sys.__stdout__)
++    sys.stderr = _Tee(log, sys.__stderr__)
++    print(f"{APP_NAME} {VERSION} ({PUBLISHER}) desktop, Python {sys.version.split()[0]}, "
++          f"{time.strftime('%Y-%m-%d %H:%M:%S')}")
++    return log_path
++
++
++# ------------------------------------------------------------ window state
++
++def config_dir() -> Path:
++    """Same folder as settings_store.config_dir() (kept import-light here)."""
++    if os.environ.get("IMG3D_CONFIG_DIR"):
++        return Path(os.environ["IMG3D_CONFIG_DIR"])
++    if sys.platform.startswith("win") and os.environ.get("APPDATA"):
++        return Path(os.environ["APPDATA"]) / APP_NAME
++    return Path.home() / ".quokkaform"
++
++
++def window_state_path() -> Path:
++    return config_dir() / "window.json"
++
++
++def load_window_state(path: Path = None) -> dict:
++    """{"width", "height", "maximized"}; defaults if missing / damaged."""
++    state = {"width": DEFAULT_SIZE[0], "height": DEFAULT_SIZE[1], "maximized": False}
++    try:
++        data = json.loads((path or window_state_path()).read_text(encoding="utf-8"))
++        w, h = int(data.get("width", 0)), int(data.get("height", 0))
++        if MIN_SIZE[0] <= w <= 10000 and MIN_SIZE[1] <= h <= 10000:
++            state["width"], state["height"] = w, h
++        state["maximized"] = bool(data.get("maximized", False))
++    except (OSError, ValueError, TypeError, AttributeError):
++        pass
++    return state
++
++
++def save_window_state(state: dict, path: Path = None) -> None:
++    path = path or window_state_path()
++    try:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(json.dumps(state), encoding="utf-8")
++    except OSError as e:
++        print("Could not save the window size:", e)
++
++
++# ----------------------------------------------------------- Windows helpers
++
++def _windll():
++    import ctypes
++
++    return ctypes.windll if sys.platform.startswith("win") else None
++
++
++def message_box(text: str, title: str = TITLE, yes_no: bool = False, error: bool = True) -> bool:
++    """Native message box (Windows); prints elsewhere. True = OK / Yes."""
++    print(f"[{title}] {text}")
++    windll = _windll()
++    if windll is None:
++        return False
++    MB_YESNO, MB_ICONERROR, MB_ICONWARNING, MB_SETFOREGROUND = 0x4, 0x10, 0x30, 0x10000
++    flags = (MB_YESNO if yes_no else 0) | (MB_ICONERROR if error else MB_ICONWARNING) | MB_SETFOREGROUND
++    return windll.user32.MessageBoxW(None, text, title, flags) in (1, 6)  # IDOK, IDYES
++
++
++def set_app_user_model_id() -> None:
++    """Own taskbar group and icon (otherwise grouped as pythonw)."""
++    windll = _windll()
++    if windll is not None:
++        try:
++            windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
++        except (AttributeError, OSError):
++            pass
++
++
++_mutex_handle = None
++
++
++def acquire_single_instance() -> bool:
++    """False if another QuokkaForm window process already runs (Windows)."""
++    global _mutex_handle
++    windll = _windll()
++    if windll is None:
++        return True
++    ERROR_ALREADY_EXISTS = 183
++    _mutex_handle = windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
++    return windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
++
++
++def focus_existing_window() -> bool:
++    """Bring the open QuokkaForm window to the front; False if not found."""
++    windll = _windll()
++    if windll is None:
++        return False
++    hwnd = windll.user32.FindWindowW(None, TITLE)
++    if not hwnd:
++        return False
++    SW_RESTORE = 9
++    if windll.user32.IsIconic(hwnd):
++        windll.user32.ShowWindow(hwnd, SW_RESTORE)
++    windll.user32.SetForegroundWindow(hwnd)
++    return True
++
++
++def webview2_version(reader=None):
++    """Installed WebView2 runtime version string, or None.
++
++    ``reader(root, key)`` returns the "pv" value or None (tests inject one)."""
++    if reader is None:
++        if not sys.platform.startswith("win"):
++            return None
++        import winreg
++
++        def reader(root, key):
++            hive = {"HKLM": winreg.HKEY_LOCAL_MACHINE, "HKCU": winreg.HKEY_CURRENT_USER}[root]
++            try:
++                with winreg.OpenKey(hive, key) as k:
++                    return winreg.QueryValueEx(k, "pv")[0]
++            except OSError:
++                return None
++
++    keys = [("HKLM", rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}"),
++            ("HKLM", rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}"),
++            ("HKCU", rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT}")]
++    for root, key in keys:
++        v = reader(root, key)
++        if v and v != "0.0.0.0":
++            return v
++    return None
++
++
++# ------------------------------------------------------------------- pages
++
++def _logo_data_uri() -> str:
++    try:
++        return "data:image/png;base64," + base64.b64encode((ASSETS / "icon_256.png").read_bytes()).decode()
++    except OSError:
++        return ""
++
++
++def _page(heading: str, body_html: str, spinner: bool) -> str:
++    spin = ('<div class="spin"></div>' if spinner else "")
++    return f"""<!doctype html><html><head><meta charset="utf-8"><title>{TITLE}</title>
++<style>
++html,body{{height:100%;margin:0}}
++body{{display:flex;align-items:center;justify-content:center;background:#e9ebee;
++font-family:"Segoe UI",system-ui,sans-serif;color:#5a3b1e}}
++.box{{text-align:center;max-width:640px;padding:24px}}
++img{{width:128px;height:128px}}
++h1{{font-size:22px;margin:12px 0 6px;color:#7a4a20}}
++p{{font-size:14px;line-height:1.5;color:#432c17}}
++code{{background:#f2e6d4;padding:2px 6px;border-radius:4px;user-select:all}}
++.spin{{margin:18px auto 0;width:34px;height:34px;border:4px solid #e6cfae;border-top-color:#965c28;
++border-radius:50%;animation:s 1s linear infinite}}
++@keyframes s{{to{{transform:rotate(360deg)}}}}
++</style></head><body><div class="box"><img src="{_logo_data_uri()}" alt="">
++<h1>{heading}</h1>{body_html}{spin}</div></body></html>"""
++
++
++def splash_html() -> str:
++    return _page("Starting QuokkaForm&hellip;",
++                 "<p>Loading the app. The first start after installing can take a minute.</p>", True)
++
++
++def error_html(message: str, log_path) -> str:
++    import html
++
++    return _page("QuokkaForm could not start",
++                 f"<p>{html.escape(message)}</p><p>Details are in the log file:<br><code>{html.escape(str(log_path))}</code></p>"
++                 "<p>If it keeps happening, run <b>QuokkaForm Setup (repair)</b> from the Start menu.</p>", False)
++
++
++# Injected into every page: hide Gradio's footer links and keep every link
++# inside QuokkaForm (no browser): links to other sites only show their
++# address; same-site "open in new tab" links (output files) are downloaded.
++LINK_GUARD_JS = r"""
++(function () {
++  if (window.__quokkaformGuard) return; window.__quokkaformGuard = true;
++  var st = document.createElement('style');
++  st.textContent = 'footer{display:none !important}';
++  (document.head || document.documentElement).appendChild(st);
++  document.addEventListener('click', function (e) {
++    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
++    if (!a) return;
++    var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (_) { return; }
++    if (u.protocol === 'javascript:') return;
++    if (u.origin === location.origin) {
++      if (a.target === '_blank' && !a.hasAttribute('download')) {
++        e.preventDefault(); e.stopPropagation();
++        var d = document.createElement('a'); d.href = u.href; d.setAttribute('download', '');
++        document.body.appendChild(d); d.click(); d.remove();
++      }
++      return;
++    }
++    if (a.hasAttribute('download')) return;
++    e.preventDefault(); e.stopPropagation();
++    window.alert('This links to a web page:\n\n' + u.href +
++      '\n\nQuokkaForm does not open a web browser. Copy the address if you want to visit it.');
++  }, true);
++})();
++"""
++
++
++# ------------------------------------------------------------------ server
++
++class ServerThread(threading.Thread):
++    """Imports app.main (the Gradio Blocks) and serves it on host:port."""
++
++    def __init__(self, host: str, port: int):
++        super().__init__(name="quokkaform-server", daemon=True)
++        self.host, self.port = host, port
++        self.demo = None
++        self.error = None
++        self.started_ok = threading.Event()
++
++    def run(self):
++        try:
++            from app import main as app_main, ui_theme
++
++            self.demo = app_main.demo
++            self.demo.launch(server_name=self.host, server_port=self.port, favicon_path=ui_theme.FAVICON,
++                             inbrowser=False, prevent_thread_lock=True, show_error=True, quiet=False)
++            self.started_ok.set()
++        except BaseException as e:  # noqa: BLE001 - reported in the window
++            traceback.print_exc()
++            self.error = e
++
++    def alive(self) -> bool:
++        return self.error is None and (self.is_alive() or self.started_ok.is_set())
++
++    def stop(self, timeout: float = 10.0) -> None:
++        if self.demo is None:
++            return
++        t = threading.Thread(target=self.demo.close, name="quokkaform-close", daemon=True)
++        t.start()
++        t.join(timeout)
++        print("Server stopped." if not t.is_alive() else "Server did not stop in time; exiting anyway.")
++
++
++# -------------------------------------------------------------------- main
++
++def parse_args(argv=None):
++    ap = argparse.ArgumentParser(prog="QuokkaForm", description="QuokkaForm desktop window")
++    ap.add_argument("--port", type=int, default=int(os.environ.get("IMG3D_PORT", instance.DEFAULT_PORT)),
++                    help="preferred port (default 7860 or IMG3D_PORT)")
++    ap.add_argument("--debug", action="store_true", help="enable WebView2 developer tools")
++    ap.add_argument("--version", action="version", version=f"{APP_NAME} {VERSION}")
++    return ap.parse_args(argv)
++
++
++def plan_server(host: str, preferred: int, choose=instance.choose_port):
++    """(own_server, port, error_message): what the launcher should do."""
++    kind, port = choose(host, preferred)
++    if kind == "existing":
++        return False, port, None
++    if kind == "new":
++        return True, port, None
++    return False, None, (f"Ports {preferred}-{preferred + instance.PORT_SPAN - 1} are all in use by other "
++                         "programs. Close one of them (or set IMG3D_PORT to a free port) and start QuokkaForm again.")
++
++
++def main(argv=None) -> int:
++    args = parse_args(argv)
++    paths.apply_env()
++    log_path = setup_logging()
++    print(paths.describe())
++    set_app_user_model_id()
++
++    if not acquire_single_instance():
++        print("QuokkaForm is already open; bringing its window to the front.")
++        if focus_existing_window():
++            return 0
++        time.sleep(3)  # it may still be starting up
++        if focus_existing_window():
++            return 0
++        message_box("QuokkaForm is already starting. Wait a moment for its window to appear.", error=False)
++        return 0
++
++    if sys.platform.startswith("win") and not webview2_version():
++        message_box("QuokkaForm needs the Microsoft Edge WebView2 Runtime to show its window, and it is "
++                    "not installed on this PC (Windows 10 and 11 normally include it).\n\n"
++                    "Download the free \"Evergreen Bootstrapper\" from Microsoft:\n"
++                    f"{WEBVIEW2_URL}\n\nInstall it, then start QuokkaForm again. "
++                    "(Running the QuokkaForm installer again also offers to install it.)")
++        return 2
++
++    try:
++        import webview
++    except ImportError:
++        message_box("The desktop window component (pywebview) is missing. Run \"QuokkaForm Setup (repair)\" "
++                    f"from the Start menu.\n\nLog: {log_path}")
++        return 3
++
++    host = os.environ.get("IMG3D_HOST", "127.0.0.1")
++    own_server, port, problem = plan_server(host, args.port)
++    if problem:
++        message_box(problem)
++        return 4
++    url = instance.url_for(host, port)
++    if port != args.port:
++        print(f"Port {args.port} is used by another program; QuokkaForm uses port {port}.")
++    print(("Starting the server at " if own_server else "Opening the QuokkaForm server already running at ") + url)
++
++    webview.settings["ALLOW_DOWNLOADS"] = True                    # Gradio download links -> Save dialog
++    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False     # never start a browser
++    state = load_window_state()
++    window = webview.create_window(TITLE, html=splash_html(), width=state["width"], height=state["height"],
++                                   min_size=MIN_SIZE, maximized=state["maximized"], resizable=True,
++                                   text_select=True, zoomable=True, background_color="#e9ebee")
++
++    def on_resized(width, height):
++        if not state["maximized"] and width >= MIN_SIZE[0] and height >= MIN_SIZE[1]:
++            state["width"], state["height"] = int(width), int(height)
++
++    def on_maximized():
++        state["maximized"] = True
++
++    def on_restored():
++        state["maximized"] = False
++
++    def on_loaded(window):
++        try:
++            if (window.get_current_url() or "").startswith(url[:-1]):
++                window.run_js(LINK_GUARD_JS)
++        except Exception:  # noqa: BLE001 - cosmetic, never fatal
++            traceback.print_exc()
++
++    window.events.resized += on_resized
++    window.events.maximized += on_maximized
++    window.events.restored += on_restored
++    window.events.loaded += on_loaded
++
++    server = ServerThread(host, port) if own_server else None
++
++    def boot():
++        if server is not None:
++            server.start()
++        ok = instance.wait_until_ready(url, alive=(server.alive if server else (lambda: True)))
++        if ok:
++            print("UI ready:", url)
++            window.load_url(url)
++        else:
++            reason = (f"The server stopped with an error: {server.error!r}" if server is not None and server.error
++                      else "The server did not answer in time.")
++            window.load_html(error_html(reason, log_path))
++
++    try:
++        webview.start(boot, gui="edgechromium", icon=str(ICON), debug=args.debug, private_mode=False,
++                      storage_path=str(paths.webview_dir()))
++    except Exception as e:  # noqa: BLE001
++        traceback.print_exc()
++        message_box(f"The QuokkaForm window could not be opened:\n{e}\n\nLog: {log_path}")
++    finally:
++        save_window_state(state)
++        print("Window closed.")
++        if server is not None:
++            server.stop()
++        sys.stdout.flush()
++        sys.stderr.flush()
++    return 0
++
++
++if __name__ == "__main__":
++    code = main()
++    # Hard exit: no non-daemon thread (queue workers, a running generation)
++    # may keep the process, and with it port 7860, alive after the window closes.
++    os._exit(code)
+diff --git a/start.bat b/start.bat
+index 3846cdd..f2a9cfa 100644
+--- a/start.bat
++++ b/start.bat
+@@ -20,15 +20,19 @@ rem   --reinstall        reinstall the Python packages
+ rem   --download-models  download all models (TRELLIS, DINOv2, BiRefNet lite,
+ rem                      SAM 2.1 Small, about 4.3 GB) with progress, then exit
+ rem   --no-pause         do not wait for a key press at the end (installers)
++rem   --desktop          open the app in its own QuokkaForm window (as the
++rem                      installed app does) instead of http://127.0.0.1:7860
+ rem Dependencies are installed once; delete this file (or run
+ rem "start.bat --reinstall") to force a reinstall.
+ set "MARKER=venv\.deps_installed"
+ set "DOWNLOAD_ONLY="
+ set "NO_PAUSE="
++set "DESKTOP="
+ for %%a in (%*) do (
+     if /i "%%~a"=="--reinstall" if exist "%MARKER%" del "%MARKER%"
+     if /i "%%~a"=="--download-models" set "DOWNLOAD_ONLY=1"
+     if /i "%%~a"=="--no-pause" set "NO_PAUSE=1"
++    if /i "%%~a"=="--desktop" set "DESKTOP=1"
+ )
+ 
+ rem ---- Python 3.10 is required (flash-attn / kaolin wheels are cp310) ----
+@@ -161,7 +165,12 @@ goto :done
+ :start_app
+ echo.
+ echo Starting application (ATTN_BACKEND=%ATTN_BACKEND%, SPCONV_ALGO=%SPCONV_ALGO%)...
+-python app\main.py
++if defined DESKTOP (
++    rem Desktop window; output also goes to %LOCALAPPDATA%\QuokkaForm\logs
++    python app\desktop.py
++) else (
++    python app\main.py
++)
+ set "RC=%ERRORLEVEL%"
+ 
+ :done
+diff --git a/tests/fakes/webview/__init__.py b/tests/fakes/webview/__init__.py
+new file mode 100644
+index 0000000..c8e295f
+--- /dev/null
++++ b/tests/fakes/webview/__init__.py
+@@ -0,0 +1,77 @@
++"""Fake pywebview for headless tests of app/desktop.py.
++
++start() runs the boot function, waits until the window was pointed at the
++UI (load_url) or an error page (load_html after the splash), fires the
++"loaded" event, then returns as if the user closed the window.
++Records what happened in the JSON file named by FAKE_WEBVIEW_REPORT.
++"""
++import json
++import os
++import threading
++import time
++
++settings = {"ALLOW_DOWNLOADS": False, "OPEN_EXTERNAL_LINKS_IN_BROWSER": True}
++_windows = []
++
++
++class _Event:
++    def __init__(self):
++        self.handlers = []
++
++    def __iadd__(self, fn):
++        self.handlers.append(fn)
++        return self
++
++
++class _Events:
++    def __init__(self):
++        for name in ("resized", "maximized", "restored", "loaded", "closed", "closing", "shown"):
++            setattr(self, name, _Event())
++
++
++class Window:
++    def __init__(self, title, html, **kw):
++        self.title, self.kw = title, kw
++        self.events = _Events()
++        self.html_pages = [html]
++        self.url = None
++        self.js = []
++        self.done = threading.Event()
++
++    def load_url(self, url):
++        self.url = url
++        self.done.set()
++
++    def load_html(self, html):
++        self.html_pages.append(html)
++        self.done.set()
++
++    def get_current_url(self):
++        return self.url
++
++    def run_js(self, js):
++        self.js.append(js)
++
++
++def create_window(title, html=None, **kw):
++    w = Window(title, html, **kw)
++    _windows.append(w)
++    return w
++
++
++def start(func=None, **kw):
++    w = _windows[0]
++    threading.Thread(target=func, daemon=True).start()
++    ok = w.done.wait(float(os.environ.get("FAKE_WEBVIEW_TIMEOUT", "120")))
++    if w.url:
++        for h in w.events.loaded.handlers:
++            h(w)
++        for h in w.events.resized.handlers:
++            h(1500, 950)
++    report = {"ok": ok, "title": w.title, "url": w.url, "pages": len(w.html_pages),
++              "error_page": "could not start" in w.html_pages[-1], "js": len(w.js),
++              "settings": settings, "start_kw": {k: str(v) for k, v in kw.items()},
++              "window_kw": {k: str(v) for k, v in w.kw.items()}}
++    with open(os.environ["FAKE_WEBVIEW_REPORT"], "w") as f:
++        json.dump(report, f)
++    time.sleep(float(os.environ.get("FAKE_WEBVIEW_HOLD", "0")))
+diff --git a/tests/test_desktop.py b/tests/test_desktop.py
+new file mode 100644
+index 0000000..5307657
+--- /dev/null
++++ b/tests/test_desktop.py
+@@ -0,0 +1,176 @@
++"""app/desktop.py: window state, logs, WebView2 detection, server plan, and an
++end-to-end run with a fake pywebview (real Gradio server, mock TRELLIS)."""
++import json
++import os
++import socket
++import subprocess
++import sys
++import time
++from pathlib import Path
++
++import pytest
++
++from app import desktop
++from app.backend import instance
++
++ROOT = Path(__file__).resolve().parent.parent
++FAKES = Path(__file__).resolve().parent / "fakes"
++MOCK_TRELLIS = Path(os.environ.get("MOCK_TRELLIS", "/workspace/mock_trellis"))
++
++
++def test_window_state_roundtrip_and_defaults(tmp_path):
++    p = tmp_path / "w" / "window.json"
++    assert desktop.load_window_state(p) == {"width": 1400, "height": 900, "maximized": False}
++    desktop.save_window_state({"width": 1600, "height": 1000, "maximized": True}, p)
++    assert desktop.load_window_state(p) == {"width": 1600, "height": 1000, "maximized": True}
++    p.write_text("{broken")
++    assert desktop.load_window_state(p)["width"] == 1400
++    p.write_text(json.dumps({"width": 50, "height": 50}))   # too small: defaults
++    assert desktop.load_window_state(p)["height"] == 900
++
++
++def test_window_state_lives_with_settings(monkeypatch, tmp_path):
++    monkeypatch.setenv("IMG3D_CONFIG_DIR", str(tmp_path))
++    assert desktop.window_state_path() == tmp_path / "window.json"
++
++
++def test_prune_logs_keeps_newest(tmp_path):
++    for i in range(14):
++        p = tmp_path / f"quokkaform-2026010{i:02d}.log"
++        p.write_text("x")
++        os.utime(p, (1000 + i, 1000 + i))
++    (tmp_path / "setup-1.log").write_text("x")
++    desktop.prune_logs(tmp_path, keep=5)
++    left = sorted(p.name for p in tmp_path.glob("quokkaform-*.log"))
++    assert len(left) == 5 and left[-1].endswith("13.log")
++    assert (tmp_path / "setup-1.log").exists()
++
++
++def test_setup_logging_writes_file(tmp_path, monkeypatch):
++    monkeypatch.setattr(sys, "stdout", sys.stdout)
++    monkeypatch.setattr(sys, "stderr", sys.stderr)
++    log = desktop.setup_logging(tmp_path)
++    print("hello log")
++    sys.stdout.flush()
++    assert "hello log" in log.read_text(encoding="utf-8")
++
++
++def test_webview2_detection():
++    key = rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{desktop.WEBVIEW2_CLIENT}"
++    assert desktop.webview2_version(lambda root, k: "130.0.1" if (root, k) == ("HKLM", key) else None) == "130.0.1"
++    hkcu = rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{desktop.WEBVIEW2_CLIENT}"
++    assert desktop.webview2_version(lambda root, k: "129.0" if (root, k) == ("HKCU", hkcu) else None) == "129.0"
++    assert desktop.webview2_version(lambda root, k: "0.0.0.0") is None   # uninstalled leftover
++    assert desktop.webview2_version(lambda root, k: None) is None
++
++
++def test_plan_server():
++    assert desktop.plan_server("h", 7860, lambda h, p: ("new", 7860)) == (True, 7860, None)
++    assert desktop.plan_server("h", 7860, lambda h, p: ("new", 7862)) == (True, 7862, None)
++    assert desktop.plan_server("h", 7860, lambda h, p: ("existing", 7860)) == (False, 7860, None)
++    own, port, msg = desktop.plan_server("h", 7860, lambda h, p: ("none", None))
++    assert not own and port is None and "7860-7879" in msg
++
++
++def test_pages_escape_and_brand():
++    assert "Starting QuokkaForm" in desktop.splash_html()
++    page = desktop.error_html("<boom>", r"C:\logs\q.log")
++    assert "&lt;boom&gt;" in page and r"C:\logs\q.log" in page
++
++
++def test_no_browser_is_ever_opened():
++    src = (ROOT / "app" / "desktop.py").read_text(encoding="utf-8")
++    for bad in ("webbrowser", "startfile", "msedge", "inbrowser=True"):
++        assert bad not in src
++    assert 'settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False' in src
++
++
++def _free_port():
++    with socket.socket() as s:
++        s.bind(("127.0.0.1", 0))
++        return s.getsockname()[1]
++
++
++def _run_desktop(tmp_path, port, extra_env=None, timeout=240):
++    report = tmp_path / "report.json"
++    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(FAKES), str(MOCK_TRELLIS)]),
++               FAKE_WEBVIEW_REPORT=str(report), IMG3D_DATA_DIR=str(tmp_path / "data"),
++               IMG3D_CONFIG_DIR=str(tmp_path / "cfg"), IMG3D_OUTPUT_DIR=str(tmp_path / "out"),
++               IMG3D_SAM_DEVICE="cpu", PYTHONUNBUFFERED="1")
++    env.pop("IMG3D_PORT", None)
++    env.update(extra_env or {})
++    r = subprocess.run([sys.executable, str(ROOT / "app" / "desktop.py"), "--port", str(port)],
++                       env=env, capture_output=True, text=True, timeout=timeout)
++    return r, json.loads(report.read_text()) if report.exists() else None
++
++
++needs_mock = pytest.mark.skipif(not (MOCK_TRELLIS / "trellis").is_dir(), reason="mock TRELLIS not available")
++
++
++@needs_mock
++def test_end_to_end_starts_serves_and_stops(tmp_path):
++    pytest.importorskip("gradio")
++    port = _free_port()
++    t0 = time.time()
++    r, rep = _run_desktop(tmp_path, port)
++    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
++    assert rep and rep["ok"] and rep["url"] == f"http://127.0.0.1:{port}/", rep
++    assert rep["title"] == "QuokkaForm - Images To Mesh"
++    assert rep["settings"]["ALLOW_DOWNLOADS"] is True
++    assert rep["settings"]["OPEN_EXTERNAL_LINKS_IN_BROWSER"] is False
++    assert rep["start_kw"]["gui"] == "edgechromium" and rep["start_kw"]["icon"].endswith("quokkaform.ico")
++    assert rep["js"] == 1                                   # link guard injected
++    # the server is gone with the process: nothing listens on the port
++    assert not instance.port_in_use("127.0.0.1", port)
++    # log file and window size were written
++    logs = list((tmp_path / "data" / "logs").glob("quokkaform-*.log"))
++    assert logs and "UI ready" in logs[0].read_text(encoding="utf-8")
++    assert json.loads((tmp_path / "cfg" / "window.json").read_text())["width"] == 1500
++    assert time.time() - t0 < 240
++
++
++@needs_mock
++def test_end_to_end_reuses_running_quokkaform(tmp_path):
++    """A QuokkaForm server already on the port: only a window is opened, and
++    closing it leaves that server running."""
++    import http.server
++    import threading
++
++    class H(http.server.BaseHTTPRequestHandler):
++        def do_GET(self):
++            self.send_response(200)
++            self.end_headers()
++            self.wfile.write(json.dumps({"title": instance.APP_TITLE}).encode())
++
++        def log_message(self, *a):
++            pass
++
++    httpd = http.server.HTTPServer(("127.0.0.1", 0), H)
++    threading.Thread(target=httpd.serve_forever, daemon=True).start()
++    port = httpd.server_address[1]
++    try:
++        r, rep = _run_desktop(tmp_path, port, timeout=60)
++        assert r.returncode == 0, r.stderr[-3000:]
++        assert rep["url"] == f"http://127.0.0.1:{port}/"
++        assert instance.port_in_use("127.0.0.1", port)
++        log = next((tmp_path / "data" / "logs").glob("quokkaform-*.log")).read_text(encoding="utf-8")
++        assert "already running" in log
++    finally:
++        httpd.shutdown()
++        httpd.server_close()
++
++
++@needs_mock
++def test_end_to_end_port_taken_by_other_program(tmp_path):
++    s = socket.socket()
++    s.bind(("127.0.0.1", 0))
++    s.listen(5)
++    busy = s.getsockname()[1]
++    try:
++        r, rep = _run_desktop(tmp_path, busy)
++        assert r.returncode == 0, r.stderr[-3000:]
++        used = int(rep["url"].rsplit(":", 1)[1].strip("/"))
++        assert used != busy and busy < used < busy + instance.PORT_SPAN
++        assert not instance.port_in_use("127.0.0.1", used)
++    finally:
++        s.close()
+diff --git a/tests/test_instance.py b/tests/test_instance.py
+new file mode 100644
+index 0000000..fa66769
+--- /dev/null
++++ b/tests/test_instance.py
+@@ -0,0 +1,103 @@
++"""Port / single-instance logic (app/backend/instance.py) with real sockets."""
++import http.server
++import json
++import socket
++import threading
++
++import pytest
++
++from app.backend import instance
++
++
++def _free_port():
++    with socket.socket() as s:
++        s.bind(("127.0.0.1", 0))
++        return s.getsockname()[1]
++
++
++class _Server:
++    """A tiny HTTP server answering /config with the given title."""
++
++    def __init__(self, title):
++        title_json = json.dumps({"title": title, "version": "4.44.1"}).encode()
++
++        class H(http.server.BaseHTTPRequestHandler):
++            def do_GET(self):
++                body = title_json if self.path == "/config" else b"<html></html>"
++                self.send_response(200)
++                self.end_headers()
++                self.wfile.write(body)
++
++            def log_message(self, *a):
++                pass
++
++        self.httpd = http.server.HTTPServer(("127.0.0.1", 0), H)
++        self.port = self.httpd.server_address[1]
++        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
++
++    def close(self):
++        self.httpd.shutdown()
++        self.httpd.server_close()
++
++
++@pytest.fixture
++def quokka():
++    s = _Server(instance.APP_TITLE)
++    yield s
++    s.close()
++
++
++@pytest.fixture
++def other():
++    s = _Server("Some other Gradio app")
++    yield s
++    s.close()
++
++
++def test_probe_free_quokkaform_other(quokka, other):
++    assert instance.probe("127.0.0.1", _free_port()) == "free"
++    assert instance.probe("127.0.0.1", quokka.port) == "quokkaform"
++    assert instance.probe("127.0.0.1", other.port) == "other"
++
++
++def test_probe_plain_tcp_listener_is_other():
++    s = socket.socket()
++    s.bind(("127.0.0.1", 0))
++    s.listen(1)
++    try:
++        assert instance.probe("127.0.0.1", s.getsockname()[1]) == "other"
++    finally:
++        s.close()
++
++
++def test_choose_port_logic_with_fake_probe():
++    def probe_fn(states):
++        return lambda host, port: states.get(port, "free")
++
++    assert instance.choose_port("h", 7860, probe_fn=probe_fn({})) == ("new", 7860)
++    assert instance.choose_port("h", 7860, probe_fn=probe_fn({7860: "quokkaform"})) == ("existing", 7860)
++    assert instance.choose_port("h", 7860, probe_fn=probe_fn({7860: "other", 7861: "other"})) == ("new", 7862)
++    # a QuokkaForm on a fallback port is somebody else's: skip it
++    assert instance.choose_port("h", 7860, probe_fn=probe_fn({7860: "other", 7861: "quokkaform"})) == ("new", 7862)
++    busy = {p: "other" for p in range(7860, 7860 + instance.PORT_SPAN)}
++    assert instance.choose_port("h", 7860, probe_fn=probe_fn(busy)) == ("none", None)
++
++
++def test_choose_port_real(quokka, other):
++    assert instance.choose_port("127.0.0.1", quokka.port) == ("existing", quokka.port)
++    kind, port = instance.choose_port("127.0.0.1", other.port)
++    assert kind == "new" and port > other.port
++
++
++def test_url_for():
++    assert instance.url_for("127.0.0.1", 7860) == "http://127.0.0.1:7860/"
++    assert instance.url_for("0.0.0.0", 7861) == "http://127.0.0.1:7861/"
++
++
++def test_wait_until_ready(quokka):
++    assert instance.wait_until_ready(instance.url_for("127.0.0.1", quokka.port), timeout=5)
++    assert not instance.wait_until_ready(instance.url_for("127.0.0.1", _free_port()), timeout=1, interval=0.1)
++    calls = []
++    assert not instance.wait_until_ready("http://x/", timeout=30, interval=0.01,
++                                         alive=lambda: len(calls) < 3, opener=lambda u: calls.append(u) or False)
++    assert len(calls) == 3
+-- 
+2.47.3
+
+
+From 30deaeee55e047985a31350b4566bfa2cd7b1e77 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:19:22 +0800
+Subject: [PATCH 07/10] Installer runtime: first-run setup without a system
+ Python
+
+- installer/setup_runtime.ps1: GPU / driver (551.61+) / VRAM checks with
+  plain messages; uv-managed Python 3.10 and a venv in
+  %LOCALAPPDATA%\QuokkaForm\runtime; pinned packages from
+  installer/requirements-lock-win.txt (torch 2.5.1+cu124, no kaolin, no
+  diffoctreerast, no Git needed); nvdiffrast from a bundled wheel, else the
+  pinned prebuilt cu124/torch2.5/cp310 wheel (SHA-256 checked), else built
+  from source; diff-gaussian-rasterization from a bundled wheel or built from
+  the pinned mip-splatting source (CUDA 12.x toolkit + VS 2022 Build Tools
+  located and loaded automatically; without them a clear warning: textures
+  and video unavailable); verification, WebView2 check, optional model
+  download; log in %LOCALAPPDATA%\QuokkaForm\logs; safe to re-run (repair)
+- installer/verify_runtime.py: per-component import / CUDA / TRELLIS check
+- QuokkaForm.cmd (portable launcher: setup on first run, then pythonw
+  desktop window) and 'QuokkaForm Setup.cmd' (repair)
+- installer/NOTICE.txt: non-commercial notice for the licence page
+---
+ QuokkaForm Setup.cmd                |  10 +
+ QuokkaForm.cmd                      |  18 +
+ installer/NOTICE.txt                |  27 ++
+ installer/requirements-lock-win.txt | 551 ++++++++++++++++++++++++++++
+ installer/requirements-win.in       |  53 +++
+ installer/setup_runtime.ps1         | 444 ++++++++++++++++++++++
+ installer/verify_runtime.py         | 110 ++++++
+ tests/test_verify_runtime.py        |  34 ++
+ 8 files changed, 1247 insertions(+)
+ create mode 100644 QuokkaForm Setup.cmd
+ create mode 100644 QuokkaForm.cmd
+ create mode 100644 installer/NOTICE.txt
+ create mode 100644 installer/requirements-lock-win.txt
+ create mode 100644 installer/requirements-win.in
+ create mode 100644 installer/setup_runtime.ps1
+ create mode 100644 installer/verify_runtime.py
+ create mode 100644 tests/test_verify_runtime.py
+
+diff --git a/QuokkaForm Setup.cmd b/QuokkaForm Setup.cmd
+new file mode 100644
+index 0000000..d3e0024
+--- /dev/null
++++ b/QuokkaForm Setup.cmd	
+@@ -0,0 +1,10 @@
++@echo off
++rem QuokkaForm Setup (repair): installs or repairs Python 3.10, the packages
++rem and the GPU components, and offers the model download. Safe to run again.
++rem Options are passed on, e.g.  "QuokkaForm Setup.cmd" -Reinstall
++setlocal
++powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0installer\setup_runtime.ps1" %*
++set "RC=%ERRORLEVEL%"
++echo.
++pause
++exit /b %RC%
+diff --git a/QuokkaForm.cmd b/QuokkaForm.cmd
+new file mode 100644
+index 0000000..c9f14f9
+--- /dev/null
++++ b/QuokkaForm.cmd
+@@ -0,0 +1,18 @@
++@echo off
++rem QuokkaForm portable launcher: first run sets everything up, then opens
++rem the QuokkaForm window (no console, no browser).
++setlocal
++set "APPDIR=%~dp0"
++set "RUNTIME=%LOCALAPPDATA%\QuokkaForm\runtime"
++if exist "%RUNTIME%\venv\quokkaform-setup.json" if exist "%RUNTIME%\venv\Scripts\pythonw.exe" goto :run
++echo QuokkaForm is not set up on this PC yet. Starting the setup...
++powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%APPDIR%installer\setup_runtime.ps1"
++if errorlevel 1 (
++    echo.
++    echo Setup did not finish. Fix the problem shown above and run QuokkaForm.cmd again.
++    pause
++    exit /b 1
++)
++:run
++start "" "%RUNTIME%\venv\Scripts\pythonw.exe" "%APPDIR%app\desktop.py" %*
++exit /b 0
+diff --git a/installer/NOTICE.txt b/installer/NOTICE.txt
+new file mode 100644
+index 0000000..2fd7f2b
+--- /dev/null
++++ b/installer/NOTICE.txt
+@@ -0,0 +1,27 @@
++QuokkaForm - Images To Mesh is free software for personal, research and
++evaluation use. It is published by Perth Resoles at no charge.
++
++QuokkaForm's own code is under the MIT licence (above). To make 3D models it
++downloads and installs other software on this PC during setup. Most of it is
++open source under permissive or GPL licences, but two GPU components are
++licensed for NON-COMMERCIAL use only:
++
++  * nvdiffrast (NVIDIA Source Code License, "1-Way Commercial"): may be
++    used only non-commercially, i.e. for research or evaluation and not for
++    any direct or indirect monetary gain.
++  * diff-gaussian-rasterization (Inria / MPII Gaussian-Splatting License):
++    research and evaluation only; commercial use needs Inria's consent.
++
++By installing QuokkaForm you agree to use these components, and therefore
++QuokkaForm, only within those terms. Do not use QuokkaForm to make models for
++a business, or sell it, unless you have obtained commercial licences from
++NVIDIA and Inria.
++
++The AI model weights (TRELLIS: MIT, DINOv2: Apache-2.0, BiRefNet: MIT,
++SAM 2.1: Apache-2.0) are downloaded from their publishers. The meshes you make
++are yours; no model licence claims them.
++
++The full list of components and licences follows (THIRD_PARTY_LICENSES.md).
++Licence texts of the installed packages are in
++%LOCALAPPDATA%\QuokkaForm\runtime\venv\Lib\site-packages\*.dist-info.
++This is not legal advice.
+diff --git a/installer/requirements-lock-win.txt b/installer/requirements-lock-win.txt
+new file mode 100644
+index 0000000..d572711
+--- /dev/null
++++ b/installer/requirements-lock-win.txt
+@@ -0,0 +1,551 @@
++# Generated by: python installer/build_zip.py --relock (uv pip compile of
++# installer/requirements-win.in for Windows x64 / CPython 3.10). Do not edit by hand.
++--index-url https://pypi.org/simple
++--extra-index-url https://download.pytorch.org/whl/cu124
++
++aiofiles==23.2.1
++    # via gradio
++annotated-doc==0.0.5
++    # via typer
++annotated-types==0.8.0
++    # via pydantic
++antlr4-python3-runtime==4.9.3
++    # via
++    #   hydra-core
++    #   omegaconf
++anyio==4.15.1
++    # via
++    #   gradio
++    #   httpx
++    #   starlette
++asttokens==3.0.2
++    # via stack-data
++attrs==26.1.0
++    # via
++    #   jsonschema
++    #   referencing
++blinker==1.9.0
++    # via flask
++bottle==0.13.4
++    # via pywebview
++ccimport==0.4.4
++    # via
++    #   pccm
++    #   spconv-cu124
++certifi==2026.10.23
++    # via
++    #   httpcore
++    #   httpx
++    #   requests
++cffi==2.1.1
++    # via clr-loader
++charset-normalizer==3.5.2
++    # via requests
++click==8.5.0
++    # via
++    #   flask
++    #   uvicorn
++clr-loader==0.3.1
++    # via pythonnet
++colorama==0.4.6
++    # via
++    #   ipython
++    #   tqdm
++    #   typer
++coloredlogs==15.0.1
++    # via onnxruntime
++comm==0.2.3
++    # via
++    #   dash
++    #   ipywidgets
++configargparse==1.8.0
++    # via open3d
++contourpy==1.3.2
++    # via matplotlib
++cumm-cu124==0.7.11
++    # via spconv-cu124
++cycler==0.12.1
++    # via matplotlib
++dash==4.4.1
++    # via open3d
++decorator==5.3.1
++    # via ipython
++easydict==1.13
++    # via -r installer/requirements-win.in
++einops==0.8.2
++    # via flash-attn
++exceptiongroup==1.3.1
++    # via
++    #   anyio
++    #   ipython
++executing==2.3.0
++    # via stack-data
++fast-simplification==0.2.0
++    # via -r installer/requirements-win.in
++fastapi==0.115.6
++    # via
++    #   -r installer/requirements-win.in
++    #   gradio
++fastjsonschema==2.22.2
++    # via nbformat
++ffmpy==1.0.0
++    # via gradio
++filelock==4.1.0
++    # via
++    #   huggingface-hub
++    #   torch
++    #   transformers
++fire==0.7.1
++    # via
++    #   cumm-cu124
++    #   pccm
++    #   spconv-cu124
++flash-attn @ https://github.com/bdashore3/flash-attention/releases/download/v2.7.1.post1/flash_attn-2.7.1.post1+cu124torch2.5.1cxx11abiFALSE-cp310-cp310-win_amd64.whl
++    # via -r installer/requirements-win.in
++flask==3.1.3
++    # via
++    #   dash
++    #   open3d
++flatbuffers==25.12.19
++    # via onnxruntime
++fonttools==4.65.0
++    # via matplotlib
++fsspec==2026.9.0
++    # via
++    #   gradio-client
++    #   huggingface-hub
++    #   torch
++glcontext==3.1.0
++    # via moderngl
++gradio==4.44.1
++    # via -r installer/requirements-win.in
++gradio-client==1.3.0
++    # via gradio
++h11==0.16.0
++    # via
++    #   httpcore
++    #   uvicorn
++hf-xet==1.7.0
++    # via huggingface-hub
++httpcore==1.0.9
++    # via httpx
++httpx==0.28.1
++    # via
++    #   gradio
++    #   gradio-client
++huggingface-hub==0.36.2
++    # via
++    #   gradio
++    #   gradio-client
++    #   tokenizers
++    #   transformers
++humanfriendly==10.0
++    # via coloredlogs
++hydra-core==1.3.7
++    # via
++    #   -r installer/requirements-win.in
++    #   sam2
++idna==3.20
++    # via
++    #   anyio
++    #   httpx
++    #   requests
++igraph==0.11.8
++    # via -r installer/requirements-win.in
++imageio==2.37.0
++    # via
++    #   -r installer/requirements-win.in
++    #   scikit-image
++imageio-ffmpeg==0.6.0
++    # via -r installer/requirements-win.in
++importlib-metadata==9.0.1
++    # via dash
++importlib-resources==6.5.2
++    # via gradio
++iopath==0.1.10
++    # via
++    #   -r installer/requirements-win.in
++    #   sam2
++ipython==8.39.0
++    # via ipywidgets
++ipywidgets==8.1.9
++    # via open3d
++itsdangerous==2.2.0
++    # via flask
++janus==2.0.0
++    # via dash
++jedi==0.20.1
++    # via ipython
++jinja2==3.1.6
++    # via
++    #   flask
++    #   gradio
++    #   torch
++jsonschema==4.26.0
++    # via
++    #   nbformat
++    #   rembg
++jsonschema-specifications==2025.9.1
++    # via jsonschema
++jupyter-core==5.9.1
++    # via nbformat
++jupyterlab-widgets==3.0.17
++    # via ipywidgets
++kiwisolver==1.5.1
++    # via matplotlib
++lark==1.3.1
++    # via pccm
++lazy-loader==0.6
++    # via scikit-image
++llvmlite==0.50.0
++    # via numba
++mapbox-earcut==1.0.3
++    # via -r installer/requirements-win.in
++markdown-it-py==4.2.0
++    # via rich
++markupsafe==2.1.5
++    # via
++    #   flask
++    #   gradio
++    #   jinja2
++    #   werkzeug
++matplotlib==3.10.9
++    # via
++    #   gradio
++    #   pyvista
++    #   vtk
++matplotlib-inline==0.2.2
++    # via ipython
++mdurl==0.1.2
++    # via markdown-it-py
++moderngl==5.13.0
++    # via utils3d
++mpmath==1.3.0
++    # via sympy
++narwhals==2.27.1
++    # via plotly
++nbformat==5.11.1
++    # via open3d
++nest-asyncio==1.6.0
++    # via dash
++networkx==3.4.2
++    # via
++    #   scikit-image
++    #   torch
++ninja==1.11.1.4
++    # via
++    #   -r installer/requirements-win.in
++    #   ccimport
++numba==0.68.0
++    # via pymatting
++numpy==1.26.4
++    # via
++    #   -r installer/requirements-win.in
++    #   contourpy
++    #   cumm-cu124
++    #   fast-simplification
++    #   gradio
++    #   imageio
++    #   mapbox-earcut
++    #   matplotlib
++    #   numba
++    #   onnxruntime
++    #   open3d
++    #   opencv-python-headless
++    #   pandas
++    #   plyfile
++    #   pymatting
++    #   pymeshfix
++    #   pyvista
++    #   rembg
++    #   sam2
++    #   scikit-image
++    #   scipy
++    #   shapely
++    #   spconv-cu124
++    #   tifffile
++    #   torchvision
++    #   transformers
++    #   trimesh
++    #   utils3d
++omegaconf==2.3.1
++    # via hydra-core
++onnxruntime==1.21.0
++    # via -r installer/requirements-win.in
++open3d==0.19.0
++    # via -r installer/requirements-win.in
++opencv-python-headless==4.11.0.86
++    # via
++    #   -r installer/requirements-win.in
++    #   rembg
++orjson==3.13.0
++    # via gradio
++packaging==26.3
++    # via
++    #   gradio
++    #   gradio-client
++    #   huggingface-hub
++    #   hydra-core
++    #   lazy-loader
++    #   matplotlib
++    #   onnxruntime
++    #   plotly
++    #   pooch
++    #   scikit-image
++    #   transformers
++    #   wheel
++pandas==2.3.3
++    # via gradio
++parso==0.8.7
++    # via jedi
++pccm==0.4.16
++    # via
++    #   cumm-cu124
++    #   spconv-cu124
++pillow==10.4.0
++    # via
++    #   -r installer/requirements-win.in
++    #   gradio
++    #   imageio
++    #   matplotlib
++    #   pymatting
++    #   pyvista
++    #   rembg
++    #   sam2
++    #   scikit-image
++    #   torchvision
++platformdirs==4.12.4
++    # via
++    #   jupyter-core
++    #   pooch
++plotly==7.1.0
++    # via dash
++plyfile==1.1.2
++    # via
++    #   -r installer/requirements-win.in
++    #   utils3d
++pooch==1.9.0
++    # via
++    #   pyvista
++    #   rembg
++portalocker==4.4.1
++    # via
++    #   iopath
++    #   pccm
++prompt-toolkit==3.0.53
++    # via ipython
++protobuf==7.36.2
++    # via onnxruntime
++proxy-tools==0.1.0
++    # via pywebview
++pure-eval==0.2.4
++    # via stack-data
++pybind11==3.1.0
++    # via
++    #   ccimport
++    #   cumm-cu124
++    #   pccm
++    #   spconv-cu124
++pycparser==3.11
++    # via cffi
++pydantic==2.10.6
++    # via
++    #   -r installer/requirements-win.in
++    #   dash
++    #   fastapi
++    #   gradio
++pydantic-core==2.27.2
++    # via pydantic
++pydub==0.25.1
++    # via gradio
++pygments==2.21.0
++    # via
++    #   ipython
++    #   rich
++pymatting==1.1.16
++    # via rembg
++pymeshfix==0.17.0
++    # via -r installer/requirements-win.in
++pynanoinstantmeshes==0.0.3
++    # via -r installer/requirements-win.in
++pyparsing==3.3.3
++    # via matplotlib
++pyreadline3==3.5.6
++    # via humanfriendly
++python-dateutil==3.0.0
++    # via
++    #   matplotlib
++    #   pandas
++python-multipart==0.0.32
++    # via gradio
++pythonnet==3.1.0
++    # via pywebview
++pytz==2026.5
++    # via pandas
++pyvista==0.44.2
++    # via
++    #   -r installer/requirements-win.in
++    #   pymeshfix
++pywebview==6.2.1
++    # via -r installer/requirements-win.in
++pyyaml==6.0.3
++    # via
++    #   gradio
++    #   huggingface-hub
++    #   omegaconf
++    #   transformers
++referencing==0.37.0
++    # via
++    #   jsonschema
++    #   jsonschema-specifications
++regex==2026.9.29
++    # via transformers
++rembg==2.0.65
++    # via -r installer/requirements-win.in
++requests==2.34.2
++    # via
++    #   ccimport
++    #   dash
++    #   huggingface-hub
++    #   pooch
++    #   transformers
++retrying==1.4.2
++    # via dash
++rich==15.0.0
++    # via typer
++rpds-py==0.30.0
++    # via
++    #   jsonschema
++    #   referencing
++rtree==1.4.0
++    # via -r installer/requirements-win.in
++ruff==0.17.2
++    # via gradio
++safetensors==0.8.0
++    # via transformers
++sam2==1.1.0
++    # via -r installer/requirements-win.in
++scikit-image==0.25.2
++    # via rembg
++scipy==1.15.2
++    # via
++    #   -r installer/requirements-win.in
++    #   pymatting
++    #   rembg
++    #   scikit-image
++    #   utils3d
++scooby==0.12.0
++    # via pyvista
++semantic-version==2.10.0
++    # via gradio
++setuptools==69.5.1
++    # via
++    #   -r installer/requirements-win.in
++    #   dash
++shapely==2.1.2
++    # via -r installer/requirements-win.in
++shellingham==1.5.4
++    # via typer
++six==1.17.0
++    # via python-dateutil
++spconv-cu124==2.3.8
++    # via -r installer/requirements-win.in
++stack-data==0.6.3
++    # via ipython
++starlette==0.41.3
++    # via fastapi
++sympy==1.13.1
++    # via
++    #   cumm-cu124
++    #   onnxruntime
++    #   torch
++termcolor==3.3.0
++    # via fire
++texttable==1.7.2
++    # via igraph
++tifffile==2025.5.10
++    # via scikit-image
++tokenizers==0.21.4
++    # via transformers
++tomlkit==0.12.0
++    # via gradio
++torch==2.5.1+cu124
++    # via
++    #   -r installer/requirements-win.in
++    #   flash-attn
++    #   sam2
++    #   torchvision
++torchvision==0.20.1+cu124
++    # via
++    #   -r installer/requirements-win.in
++    #   sam2
++tqdm==4.67.1
++    # via
++    #   -r installer/requirements-win.in
++    #   huggingface-hub
++    #   iopath
++    #   rembg
++    #   sam2
++    #   transformers
++traitlets==5.16.1
++    # via
++    #   ipython
++    #   ipywidgets
++    #   jupyter-core
++    #   matplotlib-inline
++    #   nbformat
++transformers==4.50.3
++    # via -r installer/requirements-win.in
++trimesh==4.6.6
++    # via -r installer/requirements-win.in
++typer==0.27.3
++    # via gradio
++typing-extensions==4.16.0
++    # via
++    #   anyio
++    #   dash
++    #   exceptiongroup
++    #   fastapi
++    #   gradio
++    #   gradio-client
++    #   huggingface-hub
++    #   iopath
++    #   ipython
++    #   pydantic
++    #   pydantic-core
++    #   pyvista
++    #   pywebview
++    #   referencing
++    #   torch
++    #   uvicorn
++tzdata==2026.5
++    # via
++    #   pandas
++    #   python-dateutil
++urllib3==2.8.0
++    # via
++    #   gradio
++    #   requests
++utils3d @ https://github.com/EasternJournalist/utils3d/archive/9a4eb15e4021b67b12c460c7057d642626897ec8.zip
++    # via -r installer/requirements-win.in
++uvicorn==0.54.0
++    # via gradio
++vtk==9.3.1
++    # via pyvista
++wcwidth==0.9.4
++    # via prompt-toolkit
++websockets==12.0
++    # via gradio-client
++werkzeug==3.1.9
++    # via
++    #   dash
++    #   flask
++    #   open3d
++wheel==0.48.0
++    # via -r installer/requirements-win.in
++widgetsnbextension==4.0.16
++    # via ipywidgets
++xatlas==0.0.10
++    # via -r installer/requirements-win.in
++zipp==4.1.2
++    # via importlib-metadata
+diff --git a/installer/requirements-win.in b/installer/requirements-win.in
+new file mode 100644
+index 0000000..66925db
+--- /dev/null
++++ b/installer/requirements-win.in
+@@ -0,0 +1,53 @@
++# QuokkaForm installed app (Windows 10/11 x64, Python 3.10, CUDA 12.4).
++# Source for requirements-lock-win.txt; after editing, regenerate the lock
++# (Linux or Windows, any machine with uv) with:
++#   python installer/build_zip.py --relock
++# Differences from requirements.txt (dev folder / start.bat):
++# - no kaolin: app/stubs/kaolin provides the one function TRELLIS uses
++# - no diffoctreerast (unused) and no gradio_litmodel3d (unused)
++# - nvdiffrast and diff-gaussian-rasterization are installed separately by
++#   installer/setup_runtime.ps1 (prebuilt wheel or built on the PC)
++# - git URLs replaced by GitHub archive URLs (no Git needed)
++# - sam2 comes from the wheel built by build_zip.py (wheels\ folder)
++--extra-index-url https://download.pytorch.org/whl/cu124
++torch==2.5.1+cu124
++torchvision==0.20.1+cu124
++# build tools for the CUDA extensions (setuptools pinned: newer releases
++# removed distutils._msvccompiler, which torch 2.5.1 needs on Windows)
++setuptools==69.5.1
++wheel
++ninja==1.11.1.4
++# numpy 1.x, as in the tested dev environment (kaolin pinned it there)
++numpy==1.26.4
++pillow==10.4.0
++imageio==2.37.0
++imageio-ffmpeg==0.6.0
++tqdm==4.67.1
++easydict==1.13
++opencv-python-headless==4.11.0.86
++scipy==1.15.2
++rembg==2.0.65
++onnxruntime==1.21.0
++sam2==1.1.0
++hydra-core==1.3.7
++iopath==0.1.10
++trimesh==4.6.6
++fast-simplification==0.2.0
++pynanoinstantmeshes==0.0.3
++shapely==2.1.2
++rtree==1.4.0
++mapbox-earcut==1.0.3
++xatlas==0.0.10
++pyvista==0.44.2
++pymeshfix==0.17.0
++igraph==0.11.8
++transformers==4.50.3
++open3d==0.19.0
++plyfile==1.1.2
++utils3d @ https://github.com/EasternJournalist/utils3d/archive/9a4eb15e4021b67b12c460c7057d642626897ec8.zip
++flash-attn @ https://github.com/bdashore3/flash-attention/releases/download/v2.7.1.post1/flash_attn-2.7.1.post1+cu124torch2.5.1cxx11abiFALSE-cp310-cp310-win_amd64.whl
++spconv-cu124==2.3.8
++gradio==4.44.1
++fastapi==0.115.6
++pydantic==2.10.6
++pywebview==6.2.1
+diff --git a/installer/setup_runtime.ps1 b/installer/setup_runtime.ps1
+new file mode 100644
+index 0000000..10d8cfd
+--- /dev/null
++++ b/installer/setup_runtime.ps1
+@@ -0,0 +1,444 @@
++<#
++.SYNOPSIS
++    QuokkaForm first-run setup / repair (Windows 10/11 x64).
++
++.DESCRIPTION
++    Installs everything QuokkaForm needs for the current user, without admin
++    rights and without a system Python:
++      1. checks the NVIDIA GPU, driver and VRAM (friendly messages)
++      2. Python 3.10 managed by uv     -> %LOCALAPPDATA%\QuokkaForm\runtime\python
++      3. a virtual environment         -> %LOCALAPPDATA%\QuokkaForm\runtime\venv
++      4. the pinned packages (installer\requirements-lock-win.txt, torch 2.5.1 + CUDA 12.4)
++      5. nvdiffrast: bundled wheel, else the pinned prebuilt wheel (SHA-256
++         checked), else built on this PC (needs CUDA toolkit + VS Build Tools)
++      6. diff-gaussian-rasterization: bundled wheel, else built on this PC;
++         if that is not possible QuokkaForm still works without textures/video
++      7. verifies the installation, offers the model download (about 4.3 GB)
++    Safe to run again: finished parts are skipped. Log files go to
++    %LOCALAPPDATA%\QuokkaForm\logs\setup-<date>.log.
++
++.PARAMETER Reinstall
++    Delete the virtual environment and install everything again.
++.PARAMETER Models
++    ask (default), yes or no: download the AI models at the end.
++.PARAMETER Unattended
++    Never ask (use the defaults) and never wait for Enter.
++.PARAMETER FromInstaller
++    Started by setup.exe: wait for Enter at the end if something needs reading.
++
++.NOTES
++    Keep this file ASCII only: Windows PowerShell 5.1 reads scripts without a
++    BOM in the ANSI code page.
++#>
++[CmdletBinding()]
++param(
++    [switch]$Reinstall,
++    [ValidateSet('ask', 'yes', 'no')][string]$Models = 'ask',
++    [switch]$Unattended,
++    [switch]$FromInstaller
++)
++
++$ErrorActionPreference = 'Continue'   # native tools report through exit codes
++$ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is very slow with the progress bar
++# GitHub needs TLS 1.2; Windows PowerShell 5.1 may default to older protocols.
++[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
++
++# ----------------------------------------------------------------- settings
++$AppDir    = Split-Path -Parent $PSScriptRoot           # the install folder
++$DataDir   = Join-Path $env:LOCALAPPDATA 'QuokkaForm'
++$Runtime   = Join-Path $DataDir 'runtime'
++$Venv      = Join-Path $Runtime 'venv'
++$VenvPy    = Join-Path $Venv 'Scripts\python.exe'
++$Marker    = Join-Path $Venv 'quokkaform-setup.json'
++$Downloads = Join-Path $Runtime 'downloads'
++$LogDir    = Join-Path $DataDir 'logs'
++$Wheels    = Join-Path $AppDir 'wheels'
++$Lock      = Join-Path $PSScriptRoot 'requirements-lock-win.txt'
++$Verify    = Join-Path $PSScriptRoot 'verify_runtime.py'
++
++$MinDriver = [version]'551.61'      # CUDA 12.4 on Windows
++$MinVramMB = 8000                   # below this TRELLIS does not fit
++$GoodVramMB = 11500                 # 12 GB cards: everything at default settings
++
++# nvdiffrast 0.4.0 for torch 2.5 / CUDA 12.4 / Python 3.10 (third-party build,
++# github.com/PozzettiAndrea/cuda-wheels). The release tag is not immutable,
++# so the file is pinned by its SHA-256; a different file is never installed.
++$NvdrWheelName = 'nvdiffrast-0.4.0+cu124torch2.5-cp310-cp310-win_amd64.whl'
++$NvdrWheelUrl  = 'https://github.com/PozzettiAndrea/cuda-wheels/releases/download/nvdiffrast-latest/nvdiffrast-0.4.0%2Bcu124torch2.5-cp310-cp310-win_amd64.whl'
++$NvdrWheelSha  = '63a17c0b23308ef7253d90ca0a763f1cf0e6916b1885621a0da4b5a3f271b873'
++# Sources (GitHub archives at pinned commits; no Git needed)
++$NvdrSource = 'nvdiffrast @ https://github.com/NVlabs/nvdiffrast/archive/253ac4fcea7de5f396371124af597e6cc957bfae.zip'
++$DgrSource  = 'diff_gaussian_rasterization @ https://github.com/autonomousvision/mip-splatting/archive/dda02ab5ecf45d6edb8c540d9bb65c7e451345a9.zip#subdirectory=submodules/diff-gaussian-rasterization'
++
++New-Item -ItemType Directory -Force -Path $LogDir, $Runtime, $Downloads | Out-Null
++$LogFile = Join-Path $LogDir ('setup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
++$script:Warnings = @()
++$script:BuildToolsReady = $false
++
++# ------------------------------------------------------------------ helpers
++function Add-LogLine([string]$Text) {
++    try { [System.IO.File]::AppendAllText($LogFile, $Text + "`r`n") } catch { $null = $_ }  # logging must never stop the setup
++}
++
++function Say([string]$Text, [string]$Color = 'Gray') {
++    Write-Host $Text -ForegroundColor $Color
++    Add-LogLine $Text
++}
++
++function Step([string]$Text) {
++    Say ''
++    Say ('==> ' + $Text) 'Cyan'
++}
++
++function Warn([string]$Text) {
++    Say ('WARNING: ' + $Text) 'Yellow'
++    $script:Warnings += $Text
++}
++
++function Finish([int]$Code) {
++    $needsReading = ($Code -ne 0) -or ($script:Warnings.Count -gt 0)
++    if ($FromInstaller -and $needsReading -and -not $Unattended) {
++        Read-Host 'Press Enter to close this window' | Out-Null
++    }
++    exit $Code
++}
++
++function Fail([string]$Text) {
++    Say ''
++    Say ('SETUP STOPPED: ' + $Text) 'Red'
++    Say ('Log file: ' + $LogFile)
++    Say 'Fix the problem and run "QuokkaForm Setup (repair)" from the Start menu.'
++    Finish 1
++}
++
++function Ask([string]$Question, [bool]$Default) {
++    if ($Unattended) { return $Default }
++    $hint = '[y/N]'
++    if ($Default) { $hint = '[Y/n]' }
++    $answer = Read-Host ($Question + ' ' + $hint)
++    Add-LogLine ($Question + ' -> ' + $answer)
++    if ([string]::IsNullOrWhiteSpace($answer)) { return $Default }
++    return $answer.Trim().ToLower().StartsWith('y')
++}
++
++# Run a program, show and log its output (stdout and stderr), return the exit code.
++function Invoke-Tool([string]$Exe, [string[]]$Arguments) {
++    Add-LogLine ('> "' + $Exe + '" ' + ($Arguments -join ' '))
++    & $Exe @Arguments 2>&1 | ForEach-Object {
++        $line = "$_"
++        Write-Host $line
++        Add-LogLine $line
++    }
++    return $LASTEXITCODE
++}
++
++# True if the runtime's Python can import the module.
++function Test-Import([string]$Module) {
++    if (-not (Test-Path $VenvPy)) { return $false }
++    & $VenvPy -c ('import ' + $Module) 2>$null | Out-Null
++    return ($LASTEXITCODE -eq 0)
++}
++
++function Invoke-UvInstall([string[]]$Arguments) {
++    $all = @('pip', 'install', '--python', $VenvPy) + $Arguments
++    return (Invoke-Tool $Uv $all)
++}
++
++function Get-NvidiaGpu {
++    $smi = Join-Path $env:SystemRoot 'System32\nvidia-smi.exe'
++    if (-not (Test-Path $smi)) {
++        $cmd = Get-Command 'nvidia-smi.exe' -ErrorAction SilentlyContinue
++        if ($null -eq $cmd) { return $null }
++        $smi = $cmd.Source
++    }
++    $out = & $smi '--query-gpu=name,driver_version,memory.total' '--format=csv,noheader,nounits' 2>$null
++    if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
++    $parts = @(@($out)[0].Split(',') | ForEach-Object { $_.Trim() })
++    if ($parts.Count -lt 3) { return $null }
++    $vram = 0
++    [void][int]::TryParse($parts[2], [ref]$vram)
++    return [pscustomobject]@{ Name = $parts[0]; Driver = $parts[1]; VramMB = $vram }
++}
++
++# Find the CUDA 12.x toolkit and the MSVC compiler and load them into this
++# process's environment. Returns $true when a CUDA extension can be built.
++function Initialize-Toolchain {
++    if ($script:BuildToolsReady) { return $true }
++
++    # Visual Studio 2022 C++ Build Tools (cl.exe), loaded through vcvars64.bat
++    if ($null -eq (Get-Command 'cl.exe' -ErrorAction SilentlyContinue)) {
++        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
++        $vs = $null
++        if (Test-Path $vswhere) {
++            $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
++        }
++        if (-not $vs) {
++            Warn ('The Visual Studio C++ compiler was not found. Install "Build Tools for Visual Studio 2022" with ' +
++                  'the "Desktop development with C++" workload: https://visualstudio.microsoft.com/visual-cpp-build-tools/')
++            return $false
++        }
++        $vcvars = Join-Path (@($vs)[0]) 'VC\Auxiliary\Build\vcvars64.bat'
++        if (-not (Test-Path $vcvars)) {
++            Warn ('vcvars64.bat is missing in ' + $vs + '. Repair the Visual Studio Build Tools (C++ workload).')
++            return $false
++        }
++        Say ('Loading the Visual Studio C++ environment: ' + $vcvars)
++        # A small .cmd file avoids quoting trouble with paths that contain spaces.
++        $envCmd = Join-Path $Downloads 'vcvars-env.cmd'
++        [System.IO.File]::WriteAllText($envCmd, ('@call "' + $vcvars + '" >nul 2>&1' + "`r`n" + '@set' + "`r`n"))
++        $dump = & cmd.exe /d /c $envCmd
++        foreach ($line in $dump) {
++            if ($line -match '^([^=]+)=(.*)$') {
++                [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
++            }
++        }
++        if ($null -eq (Get-Command 'cl.exe' -ErrorAction SilentlyContinue)) {
++            Warn 'cl.exe is still not available after vcvars64.bat. Repair the Visual Studio Build Tools.'
++            return $false
++        }
++    }
++
++    # CUDA toolkit 12.x (12.4 recommended, it matches PyTorch's CUDA)
++    $cuda = $env:CUDA_PATH_V12_4
++    if (-not $cuda) { $cuda = $env:CUDA_PATH }
++    if (-not $cuda -or -not (Test-Path (Join-Path $cuda 'bin\nvcc.exe'))) {
++        $root = Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA'
++        $cuda = $null
++        if (Test-Path $root) {
++            $found = Get-ChildItem $root -Directory -Filter 'v12.*' | Sort-Object Name -Descending | Select-Object -First 1
++            if ($found) { $cuda = $found.FullName }
++        }
++    }
++    if (-not $cuda -or -not (Test-Path (Join-Path $cuda 'bin\nvcc.exe'))) {
++        Warn ('The NVIDIA CUDA Toolkit 12.4 was not found. Install it from ' +
++              'https://developer.nvidia.com/cuda-12-4-0-download-archive (Windows, x86_64).')
++        return $false
++    }
++    $nvccVersion = (& (Join-Path $cuda 'bin\nvcc.exe') --version 2>&1 | Out-String)
++    if ($nvccVersion -notmatch 'release 12\.') {
++        Warn ('The CUDA Toolkit in ' + $cuda + ' is not version 12.x. Install CUDA 12.4.')
++        return $false
++    }
++    $env:CUDA_PATH = $cuda
++    $env:CUDA_HOME = $cuda
++    $env:Path = (Join-Path $cuda 'bin') + ';' + (Join-Path $Venv 'Scripts') + ';' + $env:Path
++    $env:DISTUTILS_USE_SDK = '1'
++    Say ('Build tools ready: CUDA in ' + $cuda + ', MSVC cl.exe found.')
++    $script:BuildToolsReady = $true
++    return $true
++}
++
++# ---------------------------------------------------------------- 0. start
++$Version = 'unknown'
++$versionFile = Join-Path $AppDir 'VERSION.txt'
++if (Test-Path $versionFile) { $Version = (Get-Content $versionFile -TotalCount 1).Trim() }
++Say '========================================================' 'Cyan'
++Say ('  ' + $Version + ' - setup / repair') 'Cyan'
++Say '  QuokkaForm - Images To Mesh (free, non-commercial use)' 'Cyan'
++Say '========================================================' 'Cyan'
++Say ('Install folder: ' + $AppDir)
++Say ('Runtime folder: ' + $Runtime)
++Say ('Log file:       ' + $LogFile)
++
++if (-not [Environment]::Is64BitOperatingSystem) { Fail 'QuokkaForm needs 64-bit Windows 10 or 11.' }
++
++$running = $null
++if ([System.Threading.Mutex]::TryOpenExisting('QuokkaFormDesktop', [ref]$running)) {
++    $running.Dispose()
++    Fail 'QuokkaForm is open. Close the QuokkaForm window, then run the setup again.'
++}
++
++# ------------------------------------------------------------ 1. NVIDIA GPU
++Step 'Checking the NVIDIA graphics card and driver'
++$gpu = Get-NvidiaGpu
++if ($null -eq $gpu) {
++    Say 'No NVIDIA graphics card or driver was found (nvidia-smi did not answer).' 'Yellow'
++    Say 'QuokkaForm needs an NVIDIA GPU (RTX 3060 12 GB or better recommended) with driver 551.61 or newer:'
++    Say '  https://www.nvidia.com/drivers  (or the NVIDIA App)'
++    if (-not (Ask 'Continue the setup anyway?' $false)) { Fail 'No NVIDIA GPU / driver.' }
++    Warn 'No NVIDIA GPU / driver found; QuokkaForm will not be able to make models until one is installed.'
++} else {
++    Say ('GPU: ' + $gpu.Name + ', ' + [math]::Round($gpu.VramMB / 1024, 1) + ' GB VRAM, driver ' + $gpu.Driver)
++    $driver = $null
++    try { $driver = [version]$gpu.Driver } catch { $driver = $null }  # unusual version text: skip the check
++    if ($null -ne $driver -and $driver -lt $MinDriver) {
++        Warn ('The NVIDIA driver ' + $gpu.Driver + ' is too old for CUDA 12.4. Install driver 551.61 or newer from ' +
++              'https://www.nvidia.com/drivers, restart the PC, then start QuokkaForm.')
++    }
++    if ($gpu.VramMB -gt 0 -and $gpu.VramMB -lt $MinVramMB) {
++        Warn ('This GPU has only ' + [math]::Round($gpu.VramMB / 1024, 1) + ' GB of VRAM. TRELLIS needs about 8 GB at ' +
++              'least (12 GB recommended); generating will probably run out of memory.')
++    } elseif ($gpu.VramMB -gt 0 -and $gpu.VramMB -lt $GoodVramMB) {
++        Warn ('This GPU has ' + [math]::Round($gpu.VramMB / 1024, 1) + ' GB of VRAM (12 GB recommended). ' +
++              'Use Texture bake "Fast" and keep the 360 video short if you run out of memory.')
++    }
++}
++
++# ------------------------------------------------------------------- 2. uv
++Step 'Preparing uv (Python package manager)'
++$Uv = Join-Path $AppDir 'tools\uv.exe'
++if (-not (Test-Path $Uv)) {
++    $cmd = Get-Command 'uv.exe' -ErrorAction SilentlyContinue
++    if ($null -eq $cmd) { Fail ('uv.exe is missing from ' + (Join-Path $AppDir 'tools') + '. Reinstall QuokkaForm.') }
++    $Uv = $cmd.Source
++}
++$env:UV_CACHE_DIR = Join-Path $DataDir 'cache\uv'
++$env:UV_PYTHON_INSTALL_DIR = Join-Path $Runtime 'python'
++$env:UV_PYTHON_PREFERENCE = 'only-managed'   # never use or change a system Python
++$env:UV_NO_CONFIG = '1'                      # ignore any uv.toml of the user
++$env:UV_HTTP_TIMEOUT = '300'
++$env:SAM2_BUILD_CUDA = '0'
++$env:PYTHONUTF8 = '1'
++Remove-Item Env:VIRTUAL_ENV -ErrorAction SilentlyContinue
++Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
++Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
++if ((Invoke-Tool $Uv @('--version')) -ne 0) { Fail 'uv.exe does not run.' }
++
++# ------------------------------------------------------- 3. Python + venv
++Step 'Python 3.10 and the QuokkaForm environment'
++if ($Reinstall -and (Test-Path $Venv)) {
++    Say 'Removing the old environment (-Reinstall) ...'
++    Remove-Item -Recurse -Force $Venv -ErrorAction SilentlyContinue
++    if (Test-Path $Venv) { Fail ('Could not delete ' + $Venv + '. Close QuokkaForm (and any Python) and try again.') }
++}
++if (Test-Path $VenvPy) {
++    & $VenvPy -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 10) else 1)' 2>$null
++    if ($LASTEXITCODE -ne 0) {
++        Say 'The existing environment is broken or not Python 3.10; making a new one.' 'Yellow'
++        Remove-Item -Recurse -Force $Venv -ErrorAction SilentlyContinue
++    }
++}
++if (-not (Test-Path $VenvPy)) {
++    if ((Invoke-Tool $Uv @('venv', $Venv, '--python', '3.10')) -ne 0) {
++        Fail 'Could not install Python 3.10 / create the environment (internet connection?).'
++    }
++}
++Remove-Item $Marker -ErrorAction SilentlyContinue
++
++# ------------------------------------------------------------ 4. packages
++Step 'Installing the Python packages (first time: about 3.5 GB download, PyTorch is most of it)'
++$pkgArgs = @('-r', $Lock, '--index-strategy', 'unsafe-best-match', '--only-binary', 'sam2')
++if (Test-Path $Wheels) { $pkgArgs += @('--find-links', $Wheels) }
++if ((Invoke-UvInstall $pkgArgs) -ne 0) {
++    Fail 'Installing the Python packages failed (see the messages above; often the internet connection - run the setup again to continue).'
++}
++
++# ----------------------------------------------------------- 5. nvdiffrast
++Step 'nvdiffrast (NVIDIA rasteriser, needed for every model)'
++if ((-not $Reinstall) -and (Test-Import 'nvdiffrast.torch')) {
++    Say 'Already installed.'
++} else {
++    $done = $false
++    $local = Get-ChildItem $Wheels -Filter 'nvdiffrast-*.whl' -ErrorAction SilentlyContinue | Select-Object -First 1
++    if ($local) {
++        Say ('Installing the bundled wheel ' + $local.Name)
++        $done = ((Invoke-UvInstall @('--no-deps', '--reinstall', $local.FullName)) -eq 0) -and (Test-Import 'nvdiffrast.torch')
++    }
++    if (-not $done) {
++        $file = Join-Path $Downloads $NvdrWheelName
++        try {
++            if (-not (Test-Path $file)) {
++                Say ('Downloading the prebuilt wheel: ' + $NvdrWheelUrl)
++                Invoke-WebRequest -UseBasicParsing -Uri $NvdrWheelUrl -OutFile ($file + '.part')
++                Move-Item -Force ($file + '.part') $file
++            }
++            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLower()
++            if ($hash -ne $NvdrWheelSha) {
++                Remove-Item $file -ErrorAction SilentlyContinue
++                Say ('The downloaded wheel has an unexpected SHA-256 (' + $hash + '); not installing it.') 'Yellow'
++            } else {
++                $done = ((Invoke-UvInstall @('--no-deps', '--reinstall', $file)) -eq 0) -and (Test-Import 'nvdiffrast.torch')
++            }
++        } catch {
++            Say ('Prebuilt nvdiffrast download failed: ' + $_.Exception.Message) 'Yellow'
++        }
++    }
++    if (-not $done) {
++        Say 'Building nvdiffrast on this PC (a few minutes) ...'
++        if (Initialize-Toolchain) {
++            $done = ((Invoke-UvInstall @('--no-build-isolation', '--no-deps', '--reinstall', $NvdrSource)) -eq 0) -and (Test-Import 'nvdiffrast.torch')
++        }
++    }
++    if (-not $done) { Fail 'nvdiffrast could not be installed. Install the CUDA 12.4 toolkit and the Visual Studio 2022 C++ Build Tools, then run the setup again.' }
++}
++
++# --------------------------------------------- 6. Gaussian rasteriser
++Step 'diff-gaussian-rasterization (textures and the 360 video)'
++if ((-not $Reinstall) -and (Test-Import 'diff_gaussian_rasterization')) {
++    Say 'Already installed.'
++} else {
++    $done = $false
++    $local = Get-ChildItem $Wheels -Filter 'diff_gaussian_rasterization-*.whl' -ErrorAction SilentlyContinue | Select-Object -First 1
++    if ($local) {
++        Say ('Installing the bundled wheel ' + $local.Name)
++        $done = ((Invoke-UvInstall @('--no-deps', '--reinstall', $local.FullName)) -eq 0) -and (Test-Import 'diff_gaussian_rasterization')
++    }
++    if (-not $done) {
++        Say 'Building it on this PC (needs the CUDA 12.4 toolkit and VS 2022 C++ Build Tools; 5-15 minutes) ...'
++        if (Initialize-Toolchain) {
++            $done = ((Invoke-UvInstall @('--no-build-isolation', '--no-deps', '--reinstall', $DgrSource)) -eq 0) -and (Test-Import 'diff_gaussian_rasterization')
++        }
++    }
++    if (-not $done) {
++        Warn ('diff-gaussian-rasterization is not installed: QuokkaForm works, but only with Texture bake "None" ' +
++              'and without the 360 video. Install the build tools named above and run "QuokkaForm Setup (repair)".')
++    }
++}
++
++# --------------------------------------------------------------- 7. verify
++Step 'Checking the installation'
++Push-Location $AppDir
++$verifyCode = Invoke-Tool $VenvPy @($Verify, '--app-dir', $AppDir)
++Pop-Location
++if ($verifyCode -eq 1) { Fail 'Some required components do not work (see above).' }
++$stamp = '{"version": "' + $Version + '", "date": "' + (Get-Date -Format 's') + '"}'
++[System.IO.File]::WriteAllText($Marker, $stamp)
++
++# ------------------------------------------------------------- 8. WebView2
++$wv2 = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
++$wv2Keys = @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$wv2",
++             "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$wv2",
++             "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$wv2")
++$wv2Found = $false
++foreach ($k in $wv2Keys) {
++    $pv = (Get-ItemProperty -Path $k -Name pv -ErrorAction SilentlyContinue).pv
++    if ($pv -and $pv -ne '0.0.0.0') { $wv2Found = $true }
++}
++if (-not $wv2Found) {
++    Warn ('The Microsoft Edge WebView2 Runtime is not installed; the QuokkaForm window needs it. Get the ' +
++          '"Evergreen Bootstrapper" from https://developer.microsoft.com/microsoft-edge/webview2/')
++}
++
++# --------------------------------------------------------------- 9. models
++Step 'AI models (TRELLIS, DINOv2, BiRefNet lite, SAM 2.1 Small; about 4.3 GB)'
++$getModels = $false
++if ($Models -eq 'yes') { $getModels = $true }
++elseif ($Models -eq 'ask') {
++    Say 'Without them the first generation downloads them silently and looks stuck for many minutes.'
++    $getModels = Ask 'Download the models now?' $true
++}
++if ($getModels) {
++    Push-Location $AppDir
++    & $VenvPy -m app.download_models
++    $modelCode = $LASTEXITCODE
++    Pop-Location
++    Add-LogLine ('download_models exit code ' + $modelCode)
++    if ($modelCode -ne 0) {
++        Warn ('The model download did not finish. Run "QuokkaForm Setup (repair)" again (finished files are kept) ' +
++              'or use Setup > Models in the app.')
++    }
++} else {
++    Say 'Skipped. Download them later in the app: Setup > Models > Download missing models.'
++}
++
++# -------------------------------------------------------------- 10. summary
++Say ''
++if ($script:Warnings.Count -gt 0) {
++    Say 'QuokkaForm is installed, with these notes:' 'Yellow'
++    foreach ($w in $script:Warnings) { Say (' - ' + $w) 'Yellow' }
++} else {
++    Say 'QuokkaForm is ready.' 'Green'
++}
++Say 'Start it from the Start menu (QuokkaForm) or the desktop shortcut.'
++Say ('Log file: ' + $LogFile)
++Finish 0
+diff --git a/installer/verify_runtime.py b/installer/verify_runtime.py
+new file mode 100644
+index 0000000..f4d3033
+--- /dev/null
++++ b/installer/verify_runtime.py
+@@ -0,0 +1,110 @@
++"""
++Check the installed QuokkaForm runtime (run by setup_runtime.ps1 with the
++runtime's python.exe; also handy by hand):
++
++    python installer/verify_runtime.py [--app-dir <install folder>]
++
++Prints one line per component. Exit code 0 = all fine, 1 = something
++required is missing (QuokkaForm cannot make models), 2 = only optional parts
++are missing (e.g. the Gaussian rasteriser: no textures / 360 video).
++"""
++
++import argparse
++import importlib
++import os
++import sys
++from pathlib import Path
++
++# (module, label, required, hint)
++CHECKS = [
++    ("torch", "PyTorch", True, "reinstall with QuokkaForm Setup (repair) -Reinstall"),
++    ("torchvision", "torchvision", True, ""),
++    ("flash_attn", "flash-attn", True, ""),
++    ("spconv.pytorch", "spconv", True, ""),
++    ("nvdiffrast.torch", "nvdiffrast", True, "needed for every model"),
++    ("diff_gaussian_rasterization", "diff-gaussian-rasterization", False,
++     "needed for textures and the 360 video; install the CUDA 12.4 toolkit and the Visual Studio 2022 "
++     "C++ Build Tools, then run QuokkaForm Setup (repair)"),
++    ("plyfile", "plyfile", True, ""),
++    ("utils3d", "utils3d", True, ""),
++    ("rembg", "rembg", True, ""),
++    ("onnxruntime", "onnxruntime", True, ""),
++    ("sam2", "SAM 2", False, "Select object will not work"),
++    ("open3d", "Open3D", True, ""),
++    ("pymeshfix", "pymeshfix", True, ""),
++    ("igraph", "igraph", True, ""),
++    ("xatlas", "xatlas", True, ""),
++    ("gradio", "Gradio", True, ""),
++    ("webview", "pywebview", True, "the QuokkaForm window"),
++]
++
++
++def check_imports(checks=CHECKS, importer=importlib.import_module):
++    """[(label, ok, required, detail)]"""
++    rows = []
++    for module, label, required, hint in checks:
++        try:
++            m = importer(module)
++            detail = getattr(m, "__version__", "") or "ok"
++            rows.append((label, True, required, str(detail)))
++        except Exception as e:  # noqa: BLE001 - report every kind of failure
++            msg = f"{type(e).__name__}: {e}".splitlines()[0][:200]
++            rows.append((label, False, required, msg + (f" ({hint})" if hint else "")))
++    return rows
++
++
++def check_cuda():
++    try:
++        import torch
++    except Exception as e:  # noqa: BLE001
++        return False, f"torch import failed: {e}"
++    if not torch.version.cuda:
++        return False, f"PyTorch {torch.__version__} is a CPU-only build"
++    if not torch.cuda.is_available():
++        return False, f"PyTorch {torch.__version__} cannot use the GPU (driver too old or no NVIDIA GPU)"
++    p = torch.cuda.get_device_properties(0)
++    return True, f"{p.name}, {p.total_memory / 1024 ** 3:.1f} GB, CUDA {torch.version.cuda}, torch {torch.__version__}"
++
++
++def check_trellis(app_dir: Path):
++    """Import the TRELLIS pipeline as the app does (bundled TRELLIS + stubs)."""
++    sys.path.insert(0, str(app_dir / "TRELLIS"))
++    sys.path.append(str(app_dir / "app" / "stubs"))
++    os.environ.setdefault("SPCONV_ALGO", "native")
++    try:
++        from trellis.pipelines import TrellisImageTo3DPipeline  # noqa: F401
++        return True, "ok"
++    except Exception as e:  # noqa: BLE001
++        return False, f"{type(e).__name__}: {e}".splitlines()[0][:300]
++
++
++def summarise(rows):
++    """Exit code: 1 if a required row failed, 2 if only optional ones, else 0."""
++    if any(not ok and req for _, ok, req, _ in rows):
++        return 1
++    if any(not ok for _, ok, _, _ in rows):
++        return 2
++    return 0
++
++
++def main(argv=None) -> int:
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--app-dir", default=str(Path(__file__).resolve().parent.parent))
++    a = ap.parse_args(argv)
++    rows = check_imports()
++    ok, detail = check_cuda()
++    rows.append(("CUDA GPU", ok, True, detail))
++    ok, detail = check_trellis(Path(a.app_dir))
++    rows.append(("TRELLIS pipeline", ok, True, detail))
++    for label, ok, req, detail in rows:
++        status = "OK     " if ok else ("MISSING" if req else "OPTIONAL MISSING")
++        print(f"  {status}  {label}: {detail}")
++    code = summarise(rows)
++    print({0: "All components are working.",
++           1: "Some required components are missing (see above).",
++           2: "Everything required works; some optional parts are missing (see above)."}[code])
++    return code
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/test_verify_runtime.py b/tests/test_verify_runtime.py
+new file mode 100644
+index 0000000..8bb17c2
+--- /dev/null
++++ b/tests/test_verify_runtime.py
+@@ -0,0 +1,34 @@
++"""installer/verify_runtime.py: import checks and the exit code rules."""
++import importlib.util
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++spec = importlib.util.spec_from_file_location("verify_runtime", ROOT / "installer" / "verify_runtime.py")
++vr = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(vr)
++
++
++def test_check_imports_reports_failures():
++    def importer(name):
++        if name == "bad":
++            raise OSError("DLL load failed while importing _C")
++        return type("M", (), {"__version__": "1.2"})
++
++    rows = vr.check_imports([("good", "Good", True, ""), ("bad", "Bad", False, "optional hint")], importer)
++    assert rows[0] == ("Good", True, True, "1.2")
++    assert rows[1][1] is False and "DLL load failed" in rows[1][3] and "optional hint" in rows[1][3]
++
++
++def test_summarise():
++    assert vr.summarise([("a", True, True, "")]) == 0
++    assert vr.summarise([("a", True, True, ""), ("b", False, False, "")]) == 2
++    assert vr.summarise([("a", False, True, ""), ("b", False, False, "")]) == 1
++
++
++def test_every_required_runtime_package_is_checked():
++    lock = (ROOT / "installer" / "requirements-lock-win.txt").read_text()
++    for pkg in ("plyfile", "pywebview", "flash-attn", "spconv-cu124", "sam2", "torch=="):
++        assert pkg in lock
++    modules = [c[0] for c in vr.CHECKS]
++    for mod in ("plyfile", "webview", "nvdiffrast.torch", "diff_gaussian_rasterization", "flash_attn"):
++        assert mod in modules
+-- 
+2.47.3
+
+
+From 7764ecf25edb003e05ddf4b0a9d5adb599d3ee8e Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:19:22 +0800
+Subject: [PATCH 08/10] Portable build: installer/build_zip.py (+ build_zip.ps1
+ for Windows) makes dist/QuokkaForm/ and QuokkaForm-<ver>-portable.zip with
+ the app, TRELLIS + FlexiCubes at pinned commits, uv.exe (pinned, SHA-256
+ checked), a pure-Python sam2 wheel and LICENSE_AND_NOTICES.txt; --relock
+ regenerates the Windows lock; installer/build_wheels.ps1 optionally prebuilds
+ the two CUDA extensions for bundling
+
+---
+ .gitignore                  |   5 +
+ installer/build_wheels.ps1  |  62 ++++++++++
+ installer/build_zip.ps1     |  46 +++++++
+ installer/build_zip.py      | 238 ++++++++++++++++++++++++++++++++++++
+ installer/wheels/README.txt |  13 ++
+ 5 files changed, 364 insertions(+)
+ create mode 100644 installer/build_wheels.ps1
+ create mode 100644 installer/build_zip.ps1
+ create mode 100644 installer/build_zip.py
+ create mode 100644 installer/wheels/README.txt
+
+diff --git a/.gitignore b/.gitignore
+index a576324..8f1bd4a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -25,3 +25,8 @@ Thumbs.db
+ # Cloned model repos (start.bat)
+ TRELLIS/
+ TripoSR/
++
++# Installer build output (installer/build_zip.py, QuokkaForm.iss)
++dist/
++installer/wheels/*.whl
++installer/Output/
+diff --git a/installer/build_wheels.ps1 b/installer/build_wheels.ps1
+new file mode 100644
+index 0000000..551cffa
+--- /dev/null
++++ b/installer/build_wheels.ps1
+@@ -0,0 +1,62 @@
++<#
++.SYNOPSIS
++    Build nvdiffrast and diff-gaussian-rasterization wheels for bundling.
++
++.DESCRIPTION
++    Optional. Builds both CUDA extensions once, on a PC with the CUDA 12.4
++    toolkit and the Visual Studio 2022 C++ Build Tools, into
++    installer\wheels\. build_zip.py then bundles them and setup_runtime.ps1
++    installs them, so other PCs need neither tool. Uses the dev folder's
++    venv (torch 2.5.1 + CUDA 12.4, run start.bat once first).
++
++    The wheels are built for these GPU generations (TORCH_CUDA_ARCH_LIST):
++    Turing (RTX 20xx) 7.5, Ampere 8.0 / 8.6 (RTX 30xx), Ada 8.9 (RTX 40xx),
++    Hopper 9.0 + PTX for newer cards.
++
++.EXAMPLE
++    powershell -ExecutionPolicy Bypass -File installer\build_wheels.ps1
++#>
++[CmdletBinding()]
++param(
++    [string]$Python,
++    [string]$CudaArchList = '7.5;8.0;8.6;8.9;9.0+PTX'
++)
++$ErrorActionPreference = 'Continue'
++$Repo = Split-Path -Parent $PSScriptRoot
++$Out = Join-Path $PSScriptRoot 'wheels'
++New-Item -ItemType Directory -Force -Path $Out | Out-Null
++if (-not $Python) { $Python = Join-Path $Repo 'venv\Scripts\python.exe' }
++if (-not (Test-Path $Python)) { Write-Host 'Run start.bat once first (venv\Scripts\python.exe is missing).' -ForegroundColor Red; exit 1 }
++
++# Same pinned sources as installer\setup_runtime.ps1
++$Sources = @(
++    'https://github.com/NVlabs/nvdiffrast/archive/253ac4fcea7de5f396371124af597e6cc957bfae.zip',
++    'https://github.com/autonomousvision/mip-splatting/archive/dda02ab5ecf45d6edb8c540d9bb65c7e451345a9.zip#subdirectory=submodules/diff-gaussian-rasterization'
++)
++
++# MSVC (vcvars64.bat via vswhere), written to a temp .cmd to avoid quoting problems
++if ($null -eq (Get-Command 'cl.exe' -ErrorAction SilentlyContinue)) {
++    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
++    if (-not (Test-Path $vswhere)) { Write-Host 'Visual Studio Build Tools not found (vswhere.exe).' -ForegroundColor Red; exit 1 }
++    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
++    $vcvars = Join-Path (@($vs)[0]) 'VC\Auxiliary\Build\vcvars64.bat'
++    if (-not (Test-Path $vcvars)) { Write-Host 'vcvars64.bat not found; install the C++ workload.' -ForegroundColor Red; exit 1 }
++    $envCmd = Join-Path $env:TEMP 'quokkaform-vcvars-env.cmd'
++    [System.IO.File]::WriteAllText($envCmd, ('@call "' + $vcvars + '" >nul 2>&1' + "`r`n" + '@set' + "`r`n"))
++    foreach ($line in (& cmd.exe /d /c $envCmd)) {
++        if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process') }
++    }
++}
++if (-not $env:CUDA_PATH) { Write-Host 'CUDA_PATH is not set; install the CUDA 12.4 toolkit.' -ForegroundColor Red; exit 1 }
++$env:CUDA_HOME = $env:CUDA_PATH
++$env:DISTUTILS_USE_SDK = '1'
++$env:TORCH_CUDA_ARCH_LIST = $CudaArchList
++$env:Path = (Join-Path $env:CUDA_PATH 'bin') + ';' + (Split-Path -Parent $Python) + ';' + $env:Path
++
++foreach ($src in $Sources) {
++    Write-Host "Building $src ..." -ForegroundColor Cyan
++    & $Python -m pip wheel --no-deps --no-build-isolation --no-cache-dir -w $Out $src
++    if ($LASTEXITCODE -ne 0) { Write-Host "Build failed: $src" -ForegroundColor Red; exit 1 }
++}
++Write-Host "Wheels in $Out :" -ForegroundColor Green
++Get-ChildItem $Out -Filter '*.whl' | ForEach-Object { Write-Host ('  ' + $_.Name) }
+diff --git a/installer/build_zip.ps1 b/installer/build_zip.ps1
+new file mode 100644
+index 0000000..87afcc5
+--- /dev/null
++++ b/installer/build_zip.ps1
+@@ -0,0 +1,46 @@
++<#
++.SYNOPSIS
++    Build the portable QuokkaForm zip (and optionally setup.exe) on Windows.
++
++.DESCRIPTION
++    Runs installer\build_zip.py with the dev folder's venv (it has torch,
++    which building the sam2 wheel needs; run start.bat once first).
++    Output: dist\QuokkaForm\ and dist\QuokkaForm-<version>-portable.zip.
++    With -Installer it then compiles installer\QuokkaForm.iss with Inno
++    Setup 6 (ISCC.exe) into installer\Output\QuokkaForm-Setup-<version>.exe.
++
++.EXAMPLE
++    powershell -ExecutionPolicy Bypass -File installer\build_zip.ps1 -Installer
++#>
++[CmdletBinding()]
++param(
++    [switch]$Installer,
++    [string]$Python
++)
++$ErrorActionPreference = 'Stop'
++$Repo = Split-Path -Parent $PSScriptRoot
++
++if (-not $Python) {
++    $Python = Join-Path $Repo 'venv\Scripts\python.exe'
++    if (-not (Test-Path $Python)) {
++        throw 'venv\Scripts\python.exe not found. Run start.bat once (it creates the venv), or pass -Python <python.exe with torch>.'
++    }
++}
++
++Write-Host "Building the portable folder and zip with $Python ..." -ForegroundColor Cyan
++& $Python (Join-Path $PSScriptRoot 'build_zip.py') '--python' $Python
++if ($LASTEXITCODE -ne 0) { throw "build_zip.py failed (exit code $LASTEXITCODE)." }
++
++if ($Installer) {
++    $candidates = @(
++        (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
++        (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'),
++        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
++    )
++    $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
++    if (-not $iscc) { throw 'Inno Setup 6 (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php' }
++    Write-Host "Compiling the installer with $iscc ..." -ForegroundColor Cyan
++    & $iscc (Join-Path $PSScriptRoot 'QuokkaForm.iss')
++    if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit code $LASTEXITCODE)." }
++    Write-Host ('Done: ' + (Join-Path $PSScriptRoot 'Output')) -ForegroundColor Green
++}
+diff --git a/installer/build_zip.py b/installer/build_zip.py
+new file mode 100644
+index 0000000..beac3ec
+--- /dev/null
++++ b/installer/build_zip.py
+@@ -0,0 +1,238 @@
++#!/usr/bin/env python3
++"""
++Build the portable QuokkaForm folder + zip (and the input for QuokkaForm.iss).
++
++    python installer/build_zip.py                 # -> dist/QuokkaForm/ and dist/QuokkaForm-<ver>-portable.zip
++    python installer/build_zip.py --no-zip        # folder only (what Inno Setup packs)
++    python installer/build_zip.py --relock        # only regenerate installer/requirements-lock-win.txt
++
++Runs on Windows (installer\\build_zip.ps1 calls it) and Linux. Needs
++internet the first time (downloads are cached in dist/cache) and a Python
++with torch + setuptools + pip for building the sam2 wheel (--python;
++default: this interpreter, e.g. the dev venv).
++
++What goes in (nothing that is downloaded per PC, such as torch, models,
++nvdiffrast or the Gaussian rasteriser):
++  app/                   the QuokkaForm code (no __pycache__)
++  TRELLIS/trellis/       TRELLIS code at a pinned commit (MIT) incl. the
++                         FlexiCubes submodule (Apache-2.0), with licences
++  tools/uv.exe           uv (MIT / Apache-2.0), pinned and hash-checked
++  wheels/                sam2 1.1.0 built without its CUDA extension (pure
++                         Python), plus any wheels in installer/wheels/
++                         (e.g. made by installer/build_wheels.ps1)
++  installer/             setup_runtime.ps1, verify_runtime.py, lock file
++  QuokkaForm.cmd, QuokkaForm Setup.cmd, docs and LICENSE_AND_NOTICES.txt
++"""
++
++import argparse
++import hashlib
++import os
++import shutil
++import subprocess
++import sys
++import tempfile
++import urllib.request
++import zipfile
++from pathlib import Path
++
++REPO = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(REPO))
++from app.version import APP_NAME, VERSION  # noqa: E402
++
++TRELLIS_COMMIT = "442aa1e1afb9014e80681d3bf604e8d728a86ee7"
++FLEXICUBES_COMMIT = "815e075a2a400d06c48d94c347674344ed6ae5c5"
++TRELLIS_ZIP = f"https://github.com/microsoft/TRELLIS/archive/{TRELLIS_COMMIT}.zip"
++FLEXICUBES_ZIP = f"https://github.com/MaxtirError/FlexiCubes/archive/{FLEXICUBES_COMMIT}.zip"
++UV_VERSION = "0.13.5"
++UV_ZIP = f"https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/uv-x86_64-pc-windows-msvc.zip"
++UV_SHA256 = "a38b8d1902b7cfbc76b423ba1bb456f623f42064cdc72628b6075b89afd1019a"
++SAM2_VERSION = "1.1.0"
++
++DOCS = ["LICENSE", "THIRD_PARTY_LICENSES.md", "LICENCE_FINDINGS.md", "README.md", "INSTALL_WINDOWS.txt"]
++INSTALLER_FILES = ["setup_runtime.ps1", "verify_runtime.py", "requirements-lock-win.txt", "NOTICE.txt"]
++LAUNCHERS = ["QuokkaForm.cmd", "QuokkaForm Setup.cmd"]
++LOCK_ARGS = ["--python-platform", "x86_64-pc-windows-msvc", "--python-version", "3.10",
++             "--index-strategy", "unsafe-best-match", "--emit-index-url", "--no-header",
++             "--no-binary", "sam2", "--no-binary", "iopath", "--no-binary", "antlr4-python3-runtime"]
++LOCK_HEADER = ("# Generated by: python installer/build_zip.py --relock (uv pip compile of\n"
++               "# installer/requirements-win.in for Windows x64 / CPython 3.10). Do not edit by hand.\n")
++
++
++def log(*a):
++    print(*a, flush=True)
++
++
++def sha256(path: Path) -> str:
++    h = hashlib.sha256()
++    with open(path, "rb") as f:
++        for chunk in iter(lambda: f.read(1 << 20), b""):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def fetch(url: str, dest: Path, expect_sha256: str = None) -> Path:
++    """Download once into the cache (temp name, then rename); check the hash."""
++    if not dest.is_file():
++        dest.parent.mkdir(parents=True, exist_ok=True)
++        log(f"Downloading {url}")
++        tmp = dest.with_suffix(dest.suffix + ".part")
++        with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
++            shutil.copyfileobj(r, f, 1 << 20)
++        tmp.replace(dest)
++    if expect_sha256 and sha256(dest) != expect_sha256:
++        dest.unlink()
++        raise SystemExit(f"SHA-256 mismatch for {url}; the download was removed, run again.")
++    return dest
++
++
++def _ignore(_dir, names):
++    return [n for n in names if n == "__pycache__" or n.endswith((".pyc", ".pyo"))]
++
++
++def relock(uv: str = "uv") -> None:
++    out = REPO / "installer" / "requirements-lock-win.txt"
++    cmd = [uv, "pip", "compile", str(REPO / "installer" / "requirements-win.in"), "-o", str(out)] + LOCK_ARGS
++    log(" ".join(cmd))
++    subprocess.run(cmd, check=True, cwd=REPO)
++    text = out.read_text(encoding="utf-8").replace(str(REPO) + os.sep, "").replace(str(REPO), "")
++    out.write_text(LOCK_HEADER + text, encoding="utf-8")
++    log(f"Wrote {out}")
++
++
++def copy_trellis(dest: Path, cache: Path, trellis_src: Path = None) -> None:
++    """TRELLIS/trellis (+ FlexiCubes) and their licence files."""
++    target = dest / "TRELLIS"
++    if trellis_src:
++        src = Path(trellis_src)
++        if not (src / "trellis" / "representations" / "mesh" / "flexicubes" / "flexicubes.py").is_file():
++            raise SystemExit(f"{src} is not a TRELLIS checkout with the FlexiCubes submodule "
++                             "(git clone --recurse-submodules).")
++        head = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], capture_output=True, text=True)
++        if head.returncode == 0 and head.stdout.strip() != TRELLIS_COMMIT:
++            log(f"WARNING: {src} is at {head.stdout.strip()[:10]}, the tested commit is {TRELLIS_COMMIT[:10]}.")
++        shutil.copytree(src / "trellis", target / "trellis", ignore=_ignore)
++        shutil.copy2(src / "LICENSE", target / "LICENSE")
++    else:
++        tz = fetch(TRELLIS_ZIP, cache / f"TRELLIS-{TRELLIS_COMMIT}.zip")
++        fz = fetch(FLEXICUBES_ZIP, cache / f"FlexiCubes-{FLEXICUBES_COMMIT}.zip")
++        with tempfile.TemporaryDirectory() as tmp:
++            with zipfile.ZipFile(tz) as z:
++                z.extractall(tmp)
++            root = Path(tmp) / f"TRELLIS-{TRELLIS_COMMIT}"
++            flex = root / "trellis" / "representations" / "mesh" / "flexicubes"
++            if flex.exists():
++                shutil.rmtree(flex)
++            with zipfile.ZipFile(fz) as z:
++                z.extractall(tmp)
++            shutil.move(str(Path(tmp) / f"FlexiCubes-{FLEXICUBES_COMMIT}"), str(flex))
++            shutil.copytree(root / "trellis", target / "trellis", ignore=_ignore)
++            shutil.copy2(root / "LICENSE", target / "LICENSE")
++    flex = target / "trellis" / "representations" / "mesh" / "flexicubes"
++    for extra in ("examples", "images"):  # demo code and pictures, not used
++        if (flex / extra).exists():
++            shutil.rmtree(flex / extra)
++    (target / "README.txt").write_text(
++        f"TRELLIS (https://github.com/microsoft/TRELLIS, MIT, see LICENSE) at commit {TRELLIS_COMMIT},\n"
++        f"with FlexiCubes (https://github.com/MaxtirError/FlexiCubes, Apache-2.0, see\n"
++        f"trellis/representations/mesh/flexicubes/LICENSE.txt) at commit {FLEXICUBES_COMMIT}.\n"
++        "Unmodified, except that FlexiCubes' examples/ and images/ folders are left out.\n", encoding="utf-8")
++
++
++def build_sam2_wheel(python: str, out_dir: Path, cache: Path) -> Path:
++    """sam2 1.1.0 without its optional CUDA extension = a pure-Python wheel.
++    Its setup.py imports torch, hence a Python with torch (no build isolation)."""
++    cached = sorted(cache.glob(f"sam2-{SAM2_VERSION}-py3-none-any.whl"))
++    if not cached:
++        log(f"Building the sam2 {SAM2_VERSION} wheel with {python} ...")
++        env = dict(os.environ, SAM2_BUILD_CUDA="0")
++        r = subprocess.run([python, "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--no-cache-dir",
++                            "--no-binary", "sam2",
++                            f"sam2=={SAM2_VERSION}", "-w", str(cache)], env=env)
++        cached = sorted(cache.glob(f"sam2-{SAM2_VERSION}-py3-none-any.whl"))
++        if r.returncode != 0 or not cached:
++            raise SystemExit("Could not build the sam2 wheel. Use --python with a Python that has torch, "
++                             "setuptools and pip (e.g. the dev folder's venv\\Scripts\\python.exe).")
++    out_dir.mkdir(parents=True, exist_ok=True)
++    shutil.copy2(cached[-1], out_dir / cached[-1].name)
++    return out_dir / cached[-1].name
++
++
++def write_notices(dest: Path) -> None:
++    parts = [("QuokkaForm licence (MIT)", REPO / "LICENSE"),
++             ("Important notice: free, non-commercial use", REPO / "installer" / "NOTICE.txt"),
++             ("Third-party licences", REPO / "THIRD_PARTY_LICENSES.md")]
++    text = []
++    for title, p in parts:
++        text += ["=" * 72, title, "=" * 72, "", p.read_text(encoding="utf-8").strip(), "", ""]
++    (dest / "LICENSE_AND_NOTICES.txt").write_text("\r\n".join("\n".join(text).split("\n")), encoding="utf-8-sig")
++
++
++def build(out: Path, trellis_src=None, uv_zip=None, python=None, make_zip=True) -> Path:
++    out = out.resolve()
++    cache = out / "cache"
++    dest = out / APP_NAME
++    if dest.exists():
++        shutil.rmtree(dest)
++    dest.mkdir(parents=True)
++    log(f"Building {APP_NAME} {VERSION} in {dest}")
++
++    shutil.copytree(REPO / "app", dest / "app", ignore=_ignore)
++    copy_trellis(dest, cache, trellis_src)
++
++    (dest / "installer").mkdir()
++    for name in INSTALLER_FILES:
++        shutil.copy2(REPO / "installer" / name, dest / "installer" / name)
++    for name in LAUNCHERS + DOCS:
++        shutil.copy2(REPO / name, dest / name)
++    write_notices(dest)
++    (dest / "VERSION.txt").write_text(f"{APP_NAME} {VERSION}\n", encoding="utf-8")
++
++    uvz = Path(uv_zip) if uv_zip else fetch(UV_ZIP, cache / f"uv-{UV_VERSION}-x86_64-pc-windows-msvc.zip", UV_SHA256)
++    if uv_zip and sha256(uvz) != UV_SHA256:
++        raise SystemExit(f"{uvz} is not uv {UV_VERSION} for Windows x64 (SHA-256 differs).")
++    (dest / "tools").mkdir()
++    with zipfile.ZipFile(uvz) as z:
++        names = [n for n in z.namelist() if n.endswith("uv.exe")]
++        (dest / "tools" / "uv.exe").write_bytes(z.read(names[0]))
++    (dest / "tools" / "README.txt").write_text(
++        f"uv {UV_VERSION} (https://github.com/astral-sh/uv), MIT OR Apache-2.0, unmodified.\n"
++        "Used by installer\\setup_runtime.ps1 to install Python 3.10 and the packages.\n", encoding="utf-8")
++
++    wheels = dest / "wheels"
++    build_sam2_wheel(python or sys.executable, wheels, cache)
++    for whl in sorted((REPO / "installer" / "wheels").glob("*.whl")):
++        log(f"Adding prebuilt wheel {whl.name}")
++        shutil.copy2(whl, wheels / whl.name)
++
++    if make_zip:
++        zpath = out / f"{APP_NAME}-{VERSION}-portable.zip"
++        if zpath.exists():
++            zpath.unlink()
++        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
++            for p in sorted(dest.rglob("*")):
++                if p.is_file():
++                    z.write(p, Path(APP_NAME) / p.relative_to(dest))
++        log(f"Wrote {zpath} ({zpath.stat().st_size / 1024 ** 2:.1f} MB)")
++        return zpath
++    return dest
++
++
++def main(argv=None) -> int:
++    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
++    ap.add_argument("--out", default=str(REPO / "dist"), help="output folder (default: dist)")
++    ap.add_argument("--trellis-src", help="use this TRELLIS checkout instead of downloading the pinned commit")
++    ap.add_argument("--uv-zip", help="use this uv-x86_64-pc-windows-msvc.zip instead of downloading it")
++    ap.add_argument("--python", help="Python with torch for building the sam2 wheel (default: this one)")
++    ap.add_argument("--no-zip", action="store_true", help="only build the folder")
++    ap.add_argument("--relock", action="store_true", help="regenerate installer/requirements-lock-win.txt and exit")
++    ap.add_argument("--uv", default="uv", help="uv executable for --relock")
++    a = ap.parse_args(argv)
++    if a.relock:
++        relock(a.uv)
++        return 0
++    build(Path(a.out), a.trellis_src, a.uv_zip, a.python, not a.no_zip)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/installer/wheels/README.txt b/installer/wheels/README.txt
+new file mode 100644
+index 0000000..70d7217
+--- /dev/null
++++ b/installer/wheels/README.txt
+@@ -0,0 +1,13 @@
++Optional prebuilt wheels that build_zip.py copies into the app's wheels\
++folder. installer\setup_runtime.ps1 installs a bundled wheel instead of
++downloading or compiling that package, so PCs without the CUDA toolkit and
++Visual Studio Build Tools also get textures and the 360 video.
++
++Make them on a PC that has the CUDA 12.4 toolkit + VS 2022 C++ Build Tools:
++    powershell -ExecutionPolicy Bypass -File installer\build_wheels.ps1
++(writes nvdiffrast-*.whl and diff_gaussian_rasterization-*.whl here).
++
++*.whl files are not committed (see .gitignore). nvdiffrast and
++diff-gaussian-rasterization are licensed for non-commercial use only; a
++setup.exe that bundles them must ship their licence texts (both wheels
++contain them) and stay free / non-commercial.
+-- 
+2.47.3
+
+
+From 8a98f3b5dc2cd780f3d6098e7af3740ae7f182b6 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:19:22 +0800
+Subject: [PATCH 09/10] Inno Setup script: per-user QuokkaForm-Setup-<ver>.exe
+ (no admin, %LOCALAPPDATA%\Programs\QuokkaForm), publisher Perth Resoles,
+ licence page with the non-commercial notice, Start menu + optional desktop
+ shortcut (pythonw desktop window, quokkaform.ico, own taskbar id), offers the
+ WebView2 runtime, runs the first-run setup with optional model download,
+ uninstaller keeps models / settings / outputs unless ticked; tests for
+ installer consistency and the portable build
+
+---
+ installer/QuokkaForm.iss      | 276 ++++++++++++++++++++++++++++++++++
+ tests/test_installer_files.py | 111 ++++++++++++++
+ 2 files changed, 387 insertions(+)
+ create mode 100644 installer/QuokkaForm.iss
+ create mode 100644 tests/test_installer_files.py
+
+diff --git a/installer/QuokkaForm.iss b/installer/QuokkaForm.iss
+new file mode 100644
+index 0000000..ccb9316
+--- /dev/null
++++ b/installer/QuokkaForm.iss
+@@ -0,0 +1,276 @@
++; QuokkaForm - Images To Mesh: Windows installer (Inno Setup 6.4 or newer).
++;
++; Build:  1. powershell -ExecutionPolicy Bypass -File installer\build_zip.ps1
++;            (makes dist\QuokkaForm\, the files packed below)
++;         2. open this file in Inno Setup 6 and press Build > Compile
++;            (or: build_zip.ps1 -Installer, or ISCC.exe installer\QuokkaForm.iss)
++;         -> installer\Output\QuokkaForm-Setup-<version>.exe
++;
++; Per-user install, no admin rights: %LOCALAPPDATA%\Programs\QuokkaForm.
++; After copying the files it runs installer\setup_runtime.ps1 in a console
++; window: Python 3.10 (uv), the packages, the GPU components and, if ticked,
++; the AI models. The uninstaller removes the program and its Python runtime;
++; downloaded models, settings and outputs stay unless the user ticks them.
++; Not code-signed: Windows SmartScreen shows "Windows protected your PC" ->
++; click "More info" -> "Run anyway".
++
++#define AppName "QuokkaForm"
++#define AppFullName "QuokkaForm - Images To Mesh"
++; Keep in sync with app/version.py (tests/test_installer_files.py checks it)
++#define AppVersion "0.9.0"
++#define AppPublisher "Perth Resoles"
++#define SourceDir "..\dist\QuokkaForm"
++#define AppIcon "app\assets\quokkaform.ico"
++#define RuntimeDir "{localappdata}\QuokkaForm\runtime"
++#define PythonW "{localappdata}\QuokkaForm\runtime\venv\Scripts\pythonw.exe"
++#define AppUserModelID "PerthResoles.QuokkaForm"
++
++[Setup]
++AppId={{63F6A6D6-7F24-49B2-BDBF-247F132F2EF4}
++AppName={#AppName}
++AppVersion={#AppVersion}
++AppVerName={#AppFullName} {#AppVersion}
++AppPublisher={#AppPublisher}
++AppCopyright=Copyright (c) {#AppPublisher}. Free for non-commercial use.
++VersionInfoVersion={#AppVersion}
++VersionInfoCompany={#AppPublisher}
++VersionInfoDescription={#AppFullName} Setup
++VersionInfoProductName={#AppFullName}
++; per user, never asks for admin rights
++PrivilegesRequired=lowest
++DefaultDirName={autopf}\{#AppName}
++DefaultGroupName={#AppName}
++DisableProgramGroupPage=yes
++LicenseFile={#SourceDir}\LICENSE_AND_NOTICES.txt
++SetupIconFile={#SourceDir}\{#AppIcon}
++UninstallDisplayIcon={app}\{#AppIcon}
++UninstallDisplayName={#AppFullName}
++WizardStyle=modern
++OutputDir=Output
++OutputBaseFilename=QuokkaForm-Setup-{#AppVersion}
++Compression=lzma2/max
++SolidCompression=yes
++ArchitecturesAllowed=x64compatible
++ArchitecturesInstallIn64BitMode=x64compatible
++MinVersion=10.0
++; app/desktop.py holds this mutex while the window is open
++AppMutex=QuokkaFormDesktop
++CloseApplications=no
++
++[Languages]
++Name: "english"; MessagesFile: "compiler:Default.isl"
++
++[Tasks]
++Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
++Name: "downloadmodels"; Description: "Download the AI models during setup (about 4.3 GB; otherwise later in the app)"; GroupDescription: "Models:"
++
++[InstallDelete]
++; an update replaces these folders completely (no stale files from older versions)
++Type: filesandordirs; Name: "{app}\app"
++Type: filesandordirs; Name: "{app}\TRELLIS"
++Type: filesandordirs; Name: "{app}\installer"
++Type: filesandordirs; Name: "{app}\wheels"
++Type: filesandordirs; Name: "{app}\tools"
++
++[Files]
++Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
++
++[Icons]
++Name: "{group}\QuokkaForm"; Filename: "{#PythonW}"; Parameters: """{app}\app\desktop.py"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppIcon}"; Comment: "{#AppFullName}"; AppUserModelID: "{#AppUserModelID}"
++Name: "{group}\QuokkaForm Setup (repair)"; Filename: "{app}\QuokkaForm Setup.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppIcon}"; Comment: "Install or repair Python, the packages and the models"
++Name: "{group}\QuokkaForm licences"; Filename: "{app}\LICENSE_AND_NOTICES.txt"
++Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
++Name: "{autodesktop}\QuokkaForm"; Filename: "{#PythonW}"; Parameters: """{app}\app\desktop.py"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppIcon}"; Comment: "{#AppFullName}"; AppUserModelID: "{#AppUserModelID}"; Tasks: desktopicon
++
++[Run]
++; First-run setup in a console window, so its progress is visible.
++Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\setup_runtime.ps1"" -FromInstaller -Models yes"; WorkingDir: "{app}"; StatusMsg: "Setting up Python, the packages and the AI models (see the console window)..."; Flags: waituntilterminated; Tasks: downloadmodels
++Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\setup_runtime.ps1"" -FromInstaller -Models no"; WorkingDir: "{app}"; StatusMsg: "Setting up Python and the packages (see the console window)..."; Flags: waituntilterminated; Tasks: not downloadmodels
++Filename: "{#PythonW}"; Parameters: """{app}\app\desktop.py"""; WorkingDir: "{app}"; Description: "Start QuokkaForm"; Flags: postinstall nowait skipifsilent; Check: RuntimeReady
++
++[UninstallDelete]
++; __pycache__ and anything else Python wrote into the program folder
++Type: filesandordirs; Name: "{app}"
++
++[Code]
++const
++  WebView2ClientKey = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
++  WebView2BootstrapperUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
++
++var
++  DownloadPage: TDownloadWizardPage;
++  DeleteModels, DeleteSettings, DeleteOutputs: Boolean;
++
++{ ---------------------------------------------------------------- install }
++
++function HasWebView2Value(RootKey: Integer): Boolean;
++var
++  Version: String;
++begin
++  Result := RegQueryStringValue(RootKey, WebView2ClientKey, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0');
++end;
++
++function WebView2Installed: Boolean;
++begin
++  Result := HasWebView2Value(HKLM32) or HasWebView2Value(HKLM64) or HasWebView2Value(HKCU);
++end;
++
++{ The Start QuokkaForm checkbox only makes sense after a successful setup. }
++function RuntimeReady: Boolean;
++begin
++  Result := FileExists(ExpandConstant('{#RuntimeDir}\venv\quokkaform-setup.json'));
++end;
++
++procedure InitializeWizard;
++begin
++  DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), 'Downloading the Microsoft Edge WebView2 Runtime...', nil);
++end;
++
++{ Offer the WebView2 runtime (QuokkaForm's window needs it) before installing. }
++function NextButtonClick(CurPageID: Integer): Boolean;
++var
++  ResultCode: Integer;
++begin
++  Result := True;
++  if (CurPageID <> wpReady) or WebView2Installed then
++    Exit;
++  if SuppressibleMsgBox('QuokkaForm shows its window with the Microsoft Edge WebView2 Runtime, which is not installed on this PC.'
++      + #13#10#13#10 + 'Download and install it now? (Free, from Microsoft.)', mbConfirmation, MB_YESNO, IDYES) <> IDYES then
++  begin
++    SuppressibleMsgBox('QuokkaForm will be installed, but its window will not open until the WebView2 Runtime is installed:'
++      + #13#10 + 'https://developer.microsoft.com/microsoft-edge/webview2/', mbInformation, MB_OK, IDOK);
++    Exit;
++  end;
++  DownloadPage.Clear;
++  DownloadPage.Add(WebView2BootstrapperUrl, 'MicrosoftEdgeWebview2Setup.exe', '');
++  DownloadPage.Show;
++  try
++    try
++      DownloadPage.Download;
++      if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_SHOW,
++                  ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
++        SuppressibleMsgBox('The WebView2 Runtime could not be installed (code ' + IntToStr(ResultCode) + '). '
++          + 'Install it later from https://developer.microsoft.com/microsoft-edge/webview2/', mbError, MB_OK, IDOK);
++    except
++      SuppressibleMsgBox('Downloading the WebView2 Runtime failed: ' + GetExceptionMessage + #13#10
++        + 'Install it later from https://developer.microsoft.com/microsoft-edge/webview2/', mbError, MB_OK, IDOK);
++    end;
++  finally
++    DownloadPage.Hide;
++  end;
++end;
++
++{ -------------------------------------------------------------- uninstall }
++
++{ Ask what else to delete. Unticked = kept. Silent uninstall keeps everything. }
++function InitializeUninstall: Boolean;
++var
++  Form: TSetupForm;
++  Info: TNewStaticText;
++  CbModels, CbSettings, CbOutputs: TNewCheckBox;
++  OkButton, CancelButton: TNewButton;
++  Y: Integer;
++begin
++  Result := True;
++  DeleteModels := False;
++  DeleteSettings := False;
++  DeleteOutputs := False;
++  if UninstallSilent then
++    Exit;
++
++  Form := CreateCustomForm(ScaleX(500), ScaleY(190), False, False);
++  try
++    Form.Caption := 'Uninstall QuokkaForm';
++    Form.Position := poScreenCenter;
++
++    Info := TNewStaticText.Create(Form);
++    Info.Parent := Form;
++    Info.AutoSize := False;
++    Info.WordWrap := True;
++    Info.Left := ScaleX(16);
++    Info.Top := ScaleY(16);
++    Info.Width := Form.ClientWidth - ScaleX(32);
++    Info.Height := ScaleY(44);
++    Info.Caption := 'QuokkaForm and its Python runtime will be removed. Your downloaded models, settings and '
++      + 'outputs are kept unless you tick them here:';
++
++    Y := ScaleY(66);
++    CbModels := TNewCheckBox.Create(Form);
++    CbModels.Parent := Form;
++    CbModels.Left := ScaleX(16);
++    CbModels.Top := Y;
++    CbModels.Width := Form.ClientWidth - ScaleX(32);
++    CbModels.Height := ScaleY(20);
++    CbModels.Caption := 'Delete the downloaded AI models (%LOCALAPPDATA%\QuokkaForm\models, about 4.3 GB)';
++
++    CbSettings := TNewCheckBox.Create(Form);
++    CbSettings.Parent := Form;
++    CbSettings.Left := ScaleX(16);
++    CbSettings.Top := Y + ScaleY(28);
++    CbSettings.Width := Form.ClientWidth - ScaleX(32);
++    CbSettings.Height := ScaleY(20);
++    CbSettings.Caption := 'Delete my remembered settings (%APPDATA%\QuokkaForm)';
++
++    CbOutputs := TNewCheckBox.Create(Form);
++    CbOutputs.Parent := Form;
++    CbOutputs.Left := ScaleX(16);
++    CbOutputs.Top := Y + ScaleY(56);
++    CbOutputs.Width := Form.ClientWidth - ScaleX(32);
++    CbOutputs.Height := ScaleY(20);
++    CbOutputs.Caption := 'Delete ALL my 3D models in Documents\QuokkaForm\outputs';
++
++    OkButton := TNewButton.Create(Form);
++    OkButton.Parent := Form;
++    OkButton.Caption := 'Uninstall';
++    OkButton.Width := ScaleX(90);
++    OkButton.Height := ScaleY(26);
++    OkButton.Left := Form.ClientWidth - ScaleX(16 + 90 + 8 + 90);
++    OkButton.Top := Form.ClientHeight - ScaleY(42);
++    OkButton.ModalResult := mrOk;
++    OkButton.Default := True;
++
++    CancelButton := TNewButton.Create(Form);
++    CancelButton.Parent := Form;
++    CancelButton.Caption := 'Cancel';
++    CancelButton.Width := ScaleX(90);
++    CancelButton.Height := ScaleY(26);
++    CancelButton.Left := Form.ClientWidth - ScaleX(16 + 90);
++    CancelButton.Top := Form.ClientHeight - ScaleY(42);
++    CancelButton.ModalResult := mrCancel;
++    CancelButton.Cancel := True;
++
++    Result := Form.ShowModal = mrOk;
++    if Result then
++    begin
++      DeleteModels := CbModels.Checked;
++      DeleteSettings := CbSettings.Checked;
++      DeleteOutputs := CbOutputs.Checked;
++    end;
++  finally
++    Form.Free;
++  end;
++end;
++
++procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
++var
++  Data: String;
++begin
++  if CurUninstallStep <> usPostUninstall then
++    Exit;
++  Data := ExpandConstant('{localappdata}\QuokkaForm');
++  { always: the Python runtime, download cache, logs and the window profile }
++  DelTree(Data + '\runtime', True, True, True);
++  DelTree(Data + '\cache', True, True, True);
++  DelTree(Data + '\logs', True, True, True);
++  DelTree(Data + '\webview', True, True, True);
++  if DeleteModels then
++    DelTree(Data + '\models', True, True, True);
++  RemoveDir(Data);  { only succeeds when nothing is left }
++  if DeleteSettings then
++    DelTree(ExpandConstant('{userappdata}\QuokkaForm'), True, True, True);
++  if DeleteOutputs then
++  begin
++    DelTree(ExpandConstant('{userdocs}\QuokkaForm\outputs'), True, True, True);
++    RemoveDir(ExpandConstant('{userdocs}\QuokkaForm'));
++  end;
++end;
+diff --git a/tests/test_installer_files.py b/tests/test_installer_files.py
+new file mode 100644
+index 0000000..f0c6a4c
+--- /dev/null
++++ b/tests/test_installer_files.py
+@@ -0,0 +1,111 @@
++"""Consistency of the installer files (they cannot run on Linux, so check
++what can be checked: versions, names shared with app/desktop.py, pins,
++ASCII-only PowerShell, CRLF batch files) and build the portable folder."""
++import re
++import subprocess
++import sys
++import zipfile
++from pathlib import Path
++
++import pytest
++
++from app import desktop
++from app.version import PUBLISHER, VERSION
++
++ROOT = Path(__file__).resolve().parent.parent
++INST = ROOT / "installer"
++ISS = (INST / "QuokkaForm.iss").read_text(encoding="utf-8")
++SETUP_PS1 = (INST / "setup_runtime.ps1").read_text(encoding="utf-8")
++
++
++def test_iss_matches_app():
++    assert f'#define AppVersion "{VERSION}"' in ISS
++    assert f'#define AppPublisher "{PUBLISHER}"' in ISS
++    assert f"AppMutex={desktop.MUTEX_NAME}" in ISS
++    assert f'#define AppUserModelID "{desktop.APP_USER_MODEL_ID}"' in ISS
++    assert "PrivilegesRequired=lowest" in ISS
++    assert "DefaultDirName={autopf}\\{#AppName}" in ISS        # = %LOCALAPPDATA%\Programs\QuokkaForm
++    assert "LicenseFile={#SourceDir}\\LICENSE_AND_NOTICES.txt" in ISS
++    assert "app\\assets\\quokkaform.ico" in ISS
++    assert "Flags: unchecked" in ISS                            # desktop icon optional
++    assert "QuokkaForm Setup (repair)" in ISS
++
++
++def test_iss_shortcut_uses_pythonw_and_desktop_py():
++    assert r'#define PythonW "{localappdata}\QuokkaForm\runtime\venv\Scripts\pythonw.exe"' in ISS
++    assert ISS.count('Parameters: """{app}\\app\\desktop.py"""') == 3   # Start menu, desktop, post-install
++
++
++def test_mutex_name_shared_with_setup_script():
++    assert f"TryOpenExisting('{desktop.MUTEX_NAME}'" in SETUP_PS1
++
++
++def test_powershell_and_iss_are_ascii():
++    for p in list(INST.glob("*.ps1")) + [INST / "QuokkaForm.iss"]:
++        bad = [i for i, ch in enumerate(p.read_text(encoding="utf-8")) if ord(ch) > 127]
++        assert not bad, f"non-ASCII character in {p.name} (Windows PowerShell 5.1 reads ANSI)"
++
++
++def test_cmd_files_crlf():
++    for name in ("QuokkaForm.cmd", "QuokkaForm Setup.cmd", "start.bat"):
++        data = (ROOT / name).read_bytes()
++        assert b"\r\n" in data and data.count(b"\n") == data.count(b"\r\n"), name
++
++
++def test_pins_agree():
++    req = (ROOT / "requirements.txt").read_text()
++    mip = re.search(r"mip-splatting\.git@([0-9a-f]{40})", req).group(1)
++    assert mip in SETUP_PS1 and mip in (INST / "build_wheels.ps1").read_text()
++    nvdr = re.search(r"nvdiffrast/archive/([0-9a-f]{40})", SETUP_PS1).group(1)
++    assert nvdr in (INST / "build_wheels.ps1").read_text()
++    assert "nvdiffrast.git@v0.4.0" in req and "diffoctreerast" not in req.replace("# diffoctreerast", "")
++    assert re.search(r"\$NvdrWheelSha\s*=\s*'[0-9a-f]{64}'", SETUP_PS1)
++
++
++def test_lock_covers_the_input_file():
++    names = []
++    for line in (INST / "requirements-win.in").read_text().splitlines():
++        line = line.split("#")[0].strip()
++        if line and not line.startswith("-"):
++            names.append(re.split(r"[=@ <>]", line)[0].lower().replace("_", "-"))
++    lock = (INST / "requirements-lock-win.txt").read_text().lower().replace("_", "-")
++    for n in names:
++        assert re.search(rf"^{re.escape(n)}(==| @ )", lock, re.M), n
++    for absent in ("kaolin", "diffoctreerast", "warp-lang", "usd-core", "gradio-litmodel3d"):
++        assert not re.search(rf"^{absent}==", lock, re.M), absent
++
++
++def _have(path):
++    return Path(path).exists()
++
++
++CACHE = ROOT / "dist" / "cache"
++
++
++@pytest.mark.skipif(not _have("/workspace/TRELLIS/trellis") or not list(CACHE.glob("uv-*.zip")),
++                    reason="needs a TRELLIS checkout and a cached uv zip (run build_zip.py once)")
++def test_build_zip_portable_folder(tmp_path):
++    pytest.importorskip("torch")
++    out = tmp_path / "dist"
++    (out / "cache").mkdir(parents=True)
++    for whl in CACHE.glob("sam2-*.whl"):          # reuse the built sam2 wheel when there is one
++        (out / "cache" / whl.name).write_bytes(whl.read_bytes())
++    uvzip = next(CACHE.glob("uv-*.zip"))
++    r = subprocess.run([sys.executable, str(INST / "build_zip.py"), "--out", str(out), "--trellis-src",
++                        "/workspace/TRELLIS", "--uv-zip", str(uvzip), "--python", sys.executable],
++                       capture_output=True, text=True, timeout=600)
++    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
++    z = out / f"QuokkaForm-{VERSION}-portable.zip"
++    names = set(zipfile.ZipFile(z).namelist())
++    for must in ("QuokkaForm/app/desktop.py", "QuokkaForm/app/stubs/kaolin/utils/testing.py",
++                 "QuokkaForm/TRELLIS/trellis/pipelines/__init__.py",
++                 "QuokkaForm/TRELLIS/trellis/representations/mesh/flexicubes/flexicubes.py",
++                 "QuokkaForm/TRELLIS/LICENSE", "QuokkaForm/tools/uv.exe", "QuokkaForm/installer/setup_runtime.ps1",
++                 "QuokkaForm/installer/requirements-lock-win.txt", "QuokkaForm/QuokkaForm.cmd",
++                 "QuokkaForm/LICENSE_AND_NOTICES.txt", "QuokkaForm/VERSION.txt"):
++        assert must in names, must
++    assert any(n.startswith("QuokkaForm/wheels/sam2-1.1.0-py3-none-any.whl") for n in names)
++    assert not any("__pycache__" in n or n.endswith(".pyc") for n in names)
++    assert not any("/tests/" in n or n.endswith("start.bat") for n in names)
++    notices = (out / "QuokkaForm" / "LICENSE_AND_NOTICES.txt").read_text(encoding="utf-8-sig")
++    assert "NON-COMMERCIAL" in notices and "nvdiffrast" in notices and "MIT" in notices
+-- 
+2.47.3
+
+
+From cf6d942ba416c4aa31be5e4ef0ea3e6177e4bc8c Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 22:20:57 +0800
+Subject: [PATCH 10/10] Docs: INSTALL_WINDOWS.txt for the installer / portable
+ ZIP (SmartScreen 'More info > Run anyway', WebView2, where data and logs
+ live, repair, uninstall), README install and build sections, licence docs
+ (pywebview BSD-3 and its deps, kaolin stub, diffoctreerast removed, plyfile
+ added, pinned nvdiffrast wheel, uv, Inno Setup)
+
+---
+ INSTALL_WINDOWS.txt     | 107 +++++++++++++++++++++++++++++-----------
+ LICENCE_FINDINGS.md     |  13 ++++-
+ README.md               |  46 ++++++++++++++---
+ THIRD_PARTY_LICENSES.md |  23 ++++++---
+ 4 files changed, 144 insertions(+), 45 deletions(-)
+
+diff --git a/INSTALL_WINDOWS.txt b/INSTALL_WINDOWS.txt
+index 5d12cde..480524a 100644
+--- a/INSTALL_WINDOWS.txt
++++ b/INSTALL_WINDOWS.txt
+@@ -1,29 +1,78 @@
+-QuokkaForm - Images To Mesh — Downloadable Package
+-===================================================
+-
+-End user steps:
+-1. Download the ZIP from the GitHub repo and extract it.
+-2. Double-click start.bat.
+-3. First run creates the environment, clones TRELLIS (Git required) and
+-   installs packages. Later runs start straight away
+-   (use "start.bat --reinstall" to reinstall dependencies).
+-4. Download the models (about 4.3 GB) up front: start.bat --download-models
+-   (or Setup > Models > Download missing models in the app).
+-5. Browser opens at http://127.0.0.1:7860 (QuokkaForm)
+-
+-Where your files go:
+-- Every model: Documents\QuokkaForm\outputs\<date>_<time>_<name>\
+-  (runs saved by the earlier "Image-to-3D" version stay in
+-  Documents\Image-to-3D\outputs and still show in the History tab)
+-- Remembered settings: %APPDATA%\QuokkaForm\settings.json
+-  (the old %APPDATA%\Image-to-3D\settings.json is read once if there is no new file)
+-
+-User requirements:
+-- Windows 10/11
+-- Python 3.10 (64-bit) on PATH - other versions are not supported
+-- NVIDIA GPU (12 GB+ VRAM) + drivers
+-- CUDA 12.4 toolkit + Visual Studio 2022 C++ Build Tools (first install)
+-- Git
+-- Internet on first run
+-
+-The launcher handles setup automatically after that.
++QuokkaForm - Images To Mesh - Windows install
++=============================================
++
++QuokkaForm is free for personal, research and evaluation use. Two parts it
++uses (nvdiffrast and diff-gaussian-rasterization) are NON-COMMERCIAL only:
++see LICENSE_AND_NOTICES.txt.
++
++What you need
++-------------
++- Windows 10 or 11, 64-bit
++- NVIDIA GPU, 12 GB+ VRAM recommended (8 GB minimum), driver 551.61 or newer
++- About 15 GB free disk (packages ~8 GB + models ~4.3 GB)
++- Internet on the first run
++- Microsoft Edge WebView2 Runtime (already on Windows 11 and most Windows 10;
++  the installer offers it if missing)
++Not needed any more: Python, Git, CUDA toolkit, Visual Studio. (Only if the
++prebuilt texture-bake part cannot be used, see "Textures" below.)
++
++Option A - Installer (recommended)
++----------------------------------
++1. Run QuokkaForm-Setup-0.9.0.exe.
++   Windows SmartScreen may say "Windows protected your PC" because the
++   installer is not code-signed (signing costs money). Click "More info",
++   then "Run anyway".
++2. No admin rights needed. It installs for your user only to
++   %LOCALAPPDATA%\Programs\QuokkaForm.
++3. Accept the licence page, choose the shortcuts and whether to download
++   the models now (about 4.3 GB, recommended).
++4. The setup window then installs a private Python 3.10 and the packages
++   (10-30 minutes the first time). Then QuokkaForm opens.
++5. Start it later from Start menu > QuokkaForm (or the desktop icon).
++   It opens in its own window; no browser and no console window.
++
++Option B - Portable ZIP
++-----------------------
++1. Extract QuokkaForm-0.9.0-portable.zip anywhere (e.g. Documents).
++2. Double-click QuokkaForm.cmd. The first time it runs the same setup,
++   later it opens the app straight away.
++3. "QuokkaForm Setup.cmd" repairs or reinstalls.
++
++Repair / reinstall
++------------------
++Start menu > QuokkaForm Setup (repair), or "QuokkaForm Setup.cmd" in the
++install folder. Add -Reinstall to rebuild the Python environment:
++  powershell -ExecutionPolicy Bypass -File installer\setup_runtime.ps1 -Reinstall
++
++Where things live
++-----------------
++- Program:   %LOCALAPPDATA%\Programs\QuokkaForm (installer) or the ZIP folder
++- Python + packages: %LOCALAPPDATA%\QuokkaForm\runtime
++- Models:    %LOCALAPPDATA%\QuokkaForm\models (models already downloaded by
++             an earlier start.bat install in %USERPROFILE%\.cache\huggingface,
++             %USERPROFILE%\.cache\torch and %USERPROFILE%\.u2net are reused,
++             not downloaded again)
++- Logs:      %LOCALAPPDATA%\QuokkaForm\logs (setup-*.log, quokkaform-*.log)
++- Settings:  %APPDATA%\QuokkaForm (settings.json, window size)
++- Outputs:   Documents\QuokkaForm\outputs\<date>_<time>_<name>\
++Uninstall (Settings > Apps, or Start menu) removes the program, Python and
++logs. It keeps your models, settings and outputs unless you tick them.
++
++Textures (diff-gaussian-rasterization)
++--------------------------------------
++Texture bake and the colour 360 video need a CUDA part that has no trusted
++prebuilt Windows download. Setup builds it automatically when the CUDA 12.x
++toolkit and Visual Studio 2022 Build Tools (C++ workload) are installed;
++otherwise it says so and everything else still works (Texture bake: None,
++video off). Install those two, then run the repair shortcut.
++
++Only one copy runs at a time: starting it again brings the open window to
++the front. It uses port 7860 on this PC only (the next free port up to 7879
++if another program has 7860).
++
++Developers (git checkout)
++-------------------------
++start.bat still works as before (needs Python 3.10, Git, CUDA 12.4 toolkit,
++VS 2022 Build Tools) and opens the browser. "start.bat --desktop" opens the
++QuokkaForm window instead. Building the ZIP and installer: see README.md,
++"Building the installer".
+diff --git a/LICENCE_FINDINGS.md b/LICENCE_FINDINGS.md
+index c1b0384..6e9b6df 100644
+--- a/LICENCE_FINDINGS.md
++++ b/LICENCE_FINDINGS.md
+@@ -4,13 +4,13 @@ Short version for the owner. Details per package: [THIRD_PARTY_LICENSES.md](THIR
+ 
+ ## 1. Blockers
+ 
+-**Two (three) components are research / non-commercial only, and two of them run on every generation:**
++**Two components are research / non-commercial only, and two of them run on every generation:**
+ 
+ | Component | Licence | When it runs |
+ |---|---|---|
+ | nvdiffrast (NVIDIA) | NVIDIA Source Code License "1-Way Commercial": use only "non-commercially", i.e. research or evaluation, "not for any direct or indirect monetary gain" | **Always** (TRELLIS hole filling rasterises 1000 views), plus Texture bake and the normals half of the video |
+ | diff-gaussian-rasterization (Inria / MPII gaussian-splatting) | Research and evaluation only; commercial use needs Inria's prior consent (stip-sophia.transfert@inria.fr) | Texture bake Fast / Quality and the colour half of the 360° video. **Not** with Texture bake None and the video off |
+-| diffoctreerast | Same Inria / MPII non-commercial terms | **Never** in this app (installed only because TRELLIS lists it) |
++| ~~diffoctreerast~~ | Same Inria / MPII non-commercial terms | Never in this app: **removed** from requirements.txt and the installer (2026-10-26) |
+ 
+ Everything else, including all four model weights (TRELLIS MIT, DINOv2 Apache-2.0, BiRefNet MIT, SAM 2.1 Apache-2.0), is permissive or GPL/LGPL.
+ 
+@@ -34,3 +34,12 @@ Everything else, including all four model weights (TRELLIS MIT, DINOv2 Apache-2.
+   3. Ask NVIDIA (nvdiffrast) and Inria (gaussian-splatting rasterizer) for a commercial licence; both offer them on request.
+   4. Engineering: replace the two rasterisers with permissive ones (e.g. a CPU/pytorch visibility test instead of nvdiffrast for hole filling, and Texture bake None so no Gaussian rendering). Several days of work and needs GPU testing; ask if you want it.
+ - Not legal advice: a short review by an Australian IP/commercial lawyer before relying on it is recommended.
++
++## 4. What the installer (2026-10-26) does about this
++
++- The app stays **free and non-commercial**. The installer's licence page shows LICENSE plus `installer/NOTICE.txt` (non-commercial notice for nvdiffrast and diff-gaussian-rasterization, GPL/LGPL list, bundled components), shipped as `LICENSE_AND_NOTICES.txt` with a Start menu shortcut.
++- The non-commercial parts are **not bundled** by default: setup downloads nvdiffrast (pinned prebuilt wheel, SHA-256 checked) and builds diff-gaussian-rasterization on the user's PC.
++- Removed: diffoctreerast, kaolin (+ usd-core, warp-lang; replaced by a 20-line MIT stub), gradio_litmodel3d (not in the installer lock). transformers and open3d stay: TRELLIS's pipeline package imports them.
++- plyfile (GPL-3.0+) is now in requirements.txt and the lock.
++- sam2 is bundled as a wheel built from the pinned PyPI 1.1.0 source (identical to Meta's code, checked earlier).
++- New: pywebview (BSD-3) for the window; it uses Microsoft's WebView2 Runtime, which we do not redistribute (the installer only offers Microsoft's bootstrapper).
+diff --git a/README.md b/README.md
+index c1ef354..fac2969 100644
+--- a/README.md
++++ b/README.md
+@@ -54,15 +54,24 @@ Single-image and (experimental) multi-image modes use TRELLIS (`microsoft/TRELLI
+ - **Remembered settings** (with **Reset settings to defaults**), plain-language error messages and a **System check** / **Models** download page (**Setup** tab, or `start.bat --download-models`)
+ - The 360° video adapts to the free VRAM and time limit, so it cannot make a generation hang
+ 
+-## Requirements
++## Install (Windows app)
++
++Download **QuokkaForm-Setup-0.9.0.exe** (or the portable ZIP) and run it. No Python, Git, CUDA toolkit or admin rights needed: it installs per user to `%LOCALAPPDATA%\Programs\QuokkaForm`, sets up its own Python 3.10 and packages on first run (10-30 min) and opens QuokkaForm in its **own window** (no browser, no console). Full steps, where files live and repair: [INSTALL_WINDOWS.txt](INSTALL_WINDOWS.txt).
++
++- Windows SmartScreen may warn because the installer is not code-signed: click **More info > Run anyway**.
++- Needs an NVIDIA GPU (12 GB+ VRAM recommended, 8 GB minimum), driver 551.61+, about 15 GB free, and the Microsoft Edge WebView2 Runtime (on Windows 11 already; the installer offers it).
++- Data: models in `%LOCALAPPDATA%\QuokkaForm\models` (models already in the old Hugging Face / torch / `.u2net` caches are reused), logs in `%LOCALAPPDATA%\QuokkaForm\logs`, settings in `%APPDATA%\QuokkaForm`, outputs in `Documents\QuokkaForm\outputs`. Uninstalling keeps models, settings and outputs unless you tick them.
++- **Free, non-commercial**: nvdiffrast and diff-gaussian-rasterization are research / non-commercial only, see [LICENCE_FINDINGS.md](LICENCE_FINDINGS.md).
++
++## Requirements (developer setup with start.bat)
+ 
+ - Windows 10 / 11 (primary target)
+ - **Python 3.10 only** (64-bit, add to PATH during install). The prebuilt flash-attn and kaolin wheels used here are `cp310`, built for PyTorch 2.5.1 + CUDA 12.4.
+ - NVIDIA GPU with CUDA (RTX 3060 12 GB tested; TRELLIS officially recommends 16 GB)
+-- CUDA 12.4 toolkit and Visual Studio 2022 C++ Build Tools (needed to build nvdiffrast, diffoctreerast and diff-gaussian-rasterization on first install)
++- CUDA 12.4 toolkit and Visual Studio 2022 C++ Build Tools (needed to build nvdiffrast and diff-gaussian-rasterization on first install)
+ - Git (to clone TRELLIS)
+ 
+-## Quick start (Windows)
++## Quick start (developer, Windows)
+ 
+ 1. Install Python 3.10 from [python.org](https://www.python.org/downloads/) and check **Add python.exe to PATH**.
+ 2. Download or clone this repo (`git clone https://github.com/omorellAUS/Image-to-3D_Meshtastic.git`; the repository keeps its old name) and open the folder.
+@@ -70,7 +79,7 @@ Single-image and (experimental) multi-image modes use TRELLIS (`microsoft/TRELLI
+    - It creates a Python 3.10 virtual environment
+    - Clones TRELLIS into `TRELLIS\` if needed
+    - Installs PyTorch 2.5.1 (CUDA 12.4) and the other dependencies (first run only; run `start.bat --reinstall` to force a reinstall)
+-   - Starts QuokkaForm in your browser at http://127.0.0.1:7860 (local only; set `IMG3D_HOST=0.0.0.0` to reach it from other PCs on your network)
++   - Starts QuokkaForm in your browser at http://127.0.0.1:7860 (local only; set `IMG3D_HOST=0.0.0.0` to reach it from other PCs on your network). `start.bat --desktop` opens the QuokkaForm window instead, like the installed app.
+ 
+ First run takes longer while packages download. Then download the models (about 4.3 GB) **before** the first generation, so it does not sit silently for many minutes:
+ 
+@@ -80,11 +89,26 @@ start.bat --download-models
+ 
+ or, in the app, **Setup > Models > Download missing models** (with progress). If models are missing, a banner at the top of the app says so.
+ 
++## Building the installer
++
++On a Windows PC with the dev setup above (its `venv` with torch is used to build one wheel):
++
++```bat
++powershell -ExecutionPolicy Bypass -File installer\build_zip.ps1
++powershell -ExecutionPolicy Bypass -File installer\build_zip.ps1 -Installer
++```
++
++The first makes `dist\QuokkaForm\` and `dist\QuokkaForm-<version>-portable.zip` (about 16 MB: the app, TRELLIS and FlexiCubes at pinned commits, `uv.exe`, the lock file and setup scripts; packages download on the user's PC). `-Installer` also compiles `installer\Output\QuokkaForm-Setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isdl.php) (or open `installer\QuokkaForm.iss` in Inno Setup and use Build > Compile after building the folder). `installer/build_zip.py` runs on Linux too. Version and publisher: `app/version.py` and the `#define`s at the top of the `.iss` (a test checks they match).
++
++- `installer\build_wheels.ps1` (optional, needs CUDA 12.4 + VS 2022 Build Tools) prebuilds nvdiffrast and diff-gaussian-rasterization into `installer\wheels\`; the next build bundles them so users never compile. Without it, setup downloads a SHA-256-pinned prebuilt nvdiffrast wheel and builds diff-gaussian-rasterization if the tools are present.
++- `python installer/build_zip.py --relock` regenerates `installer/requirements-lock-win.txt` from `installer/requirements-win.in` (needs uv).
++- The installer is not code-signed, so SmartScreen shows "More info > Run anyway".
++
+ ## Models (download up front)
+ 
+ | Model | Used for | Licence | Download | Stored in |
+ |-------|----------|---------|----------|-----------|
+-| TRELLIS-image-large (Microsoft) | 3D generation | MIT | ~2.8 GB | Hugging Face cache (`%USERPROFILE%\.cache\huggingface`, or `HF_HOME`) |
++| TRELLIS-image-large (Microsoft) | 3D generation | MIT | ~2.8 GB | Hugging Face cache (`%USERPROFILE%\.cache\huggingface`, or `HF_HOME`; installed app: `%LOCALAPPDATA%\QuokkaForm\models`) |
+ | DINOv2 ViT-L/14 with registers (Meta) | Image encoder inside TRELLIS | Apache-2.0 | ~1.2 GB | torch hub cache (`%USERPROFILE%\.cache\torch\hub`, or `TORCH_HOME`) |
+ | BiRefNet lite | Background removal (default) | MIT | ~214 MB | `%USERPROFILE%\.u2net` (or `U2NET_HOME`) |
+ | SAM 2.1 Small (Meta) | Select object / Auto-select | Apache-2.0 | ~176 MB | Hugging Face cache |
+@@ -114,6 +138,9 @@ python app/main.py
+ ```text
+ ├── app/
+ │   ├── main.py                 # Gradio UI
++│   ├── desktop.py              # QuokkaForm window (pywebview / WebView2), installed-app entry point
++│   ├── version.py              # App name, version, publisher
++│   ├── stubs/kaolin/           # Tiny stand-in for the one kaolin function TRELLIS uses
+ │   ├── ui_theme.py             # QuokkaForm theme, CSS, logo header, favicon
+ │   ├── assets/                 # Logo, icon (.ico + PNG sizes)
+ │   ├── download_models.py      # Model preload: python -m app.download_models
+@@ -132,9 +159,14 @@ python app/main.py
+ │       ├── jobs.py             # One generation + its history folder (Create tab and Batch)
+ │       ├── settings_store.py   # Remembered settings (JSON in the user config dir)
+ │       ├── envcheck.py         # Startup system check (GPU, driver, RAM, disk)
++│       ├── paths.py            # Per-user data / models / logs folders, old cache reuse
++│       ├── instance.py         # Port choice, "is QuokkaForm already running?"
+ │       └── api.py              # Optional FastAPI backend
+ ├── TRELLIS/                    # Cloned by start.bat (not committed)
+-├── start.bat                   # Windows launcher
++├── installer/                  # Setup script, lock file, build_zip, Inno Setup .iss
++├── QuokkaForm.cmd              # Portable launcher (first-run setup, then the window)
++├── QuokkaForm Setup.cmd        # Repair / reinstall the runtime
++├── start.bat                   # Developer launcher (browser; --desktop for the window)
+ ├── requirements.txt
+ ├── README.md
+ └── LICENSE
+@@ -348,4 +380,4 @@ At startup the app checks the PC (GPU, VRAM, NVIDIA driver, PyTorch/CUDA build,
+ 
+ ## License
+ 
+-MIT. See [LICENSE](LICENSE).
++QuokkaForm's own code is MIT. See [LICENSE](LICENSE). It is distributed free and **non-commercial** because nvdiffrast and diff-gaussian-rasterization are; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [LICENCE_FINDINGS.md](LICENCE_FINDINGS.md).
+diff --git a/THIRD_PARTY_LICENSES.md b/THIRD_PARTY_LICENSES.md
+index c4b36ea..e74576a 100644
+--- a/THIRD_PARTY_LICENSES.md
++++ b/THIRD_PARTY_LICENSES.md
+@@ -1,6 +1,6 @@
+ # Third-party licences
+ 
+-QuokkaForm itself is MIT (see [LICENSE](LICENSE)). It runs on top of the packages and model weights below; none of them is part of this repository: `start.bat` installs the packages from PyPI / GitHub / NVIDIA and the models download from Hugging Face, Meta, GitHub (rembg releases) on the user's PC.
++QuokkaForm itself is MIT (see [LICENSE](LICENSE)). It runs on top of the packages and model weights below; `start.bat` and the installer's first-run setup install the packages from PyPI / GitHub / NVIDIA / download.pytorch.org and the models download from Hugging Face, Meta, GitHub (rembg releases) on the user's PC. The portable ZIP / installer bundles only: TRELLIS and FlexiCubes source (MIT / Apache-2.0, with their licence files), `uv.exe` (MIT OR Apache-2.0, Astral) and a pure-Python sam2 wheel (Apache-2.0); see `installer/NOTICE.txt`, shipped as `LICENSE_AND_NOTICES.txt` and shown on the installer's licence page.
+ 
+ Checked 2026-10-25 from each project's LICENSE file, PyPI metadata or model card, for the versions pinned in `requirements.txt` (and the full Windows dependency lock from the installer research, 173 packages). **This is a technical audit, not legal advice.** See [LICENCE_FINDINGS.md](LICENCE_FINDINGS.md) for what it means for a public installer and for commercial use.
+ 
+@@ -20,14 +20,14 @@ Legend: ✅ permissive (MIT / BSD / Apache / ISC / PSF / HPND / MPL), 🟡 copyl
+ 
+ | Package | Used for (in this app) | Licence | |
+ |---|---|---|---|
+-| **nvdiffrast** (NVlabs, git) | Rasterisation in TRELLIS: hole filling (always), texture bake, mesh-normal video | **NVIDIA Source Code License (1-Way Commercial)**: §3.3 "may be used or intended for use non-commercially" = research or evaluation only, no direct or indirect monetary gain | 🔴 |
+-| **diff-gaussian-rasterization** (mip-splatting submodule, git) | Rendering the 3D Gaussians: the 100 texture views (Texture bake Fast/Quality) and the colour half of the 360° video | **Gaussian-Splatting License (Inria / MPII)**: research and evaluation only, commercial use needs Inria's consent | 🔴 |
+-| **diffoctreerast** (JeffreyXiang, git) | Installed but **not used by this app** (only TRELLIS's radiance-field/octree renderer, which the app never decodes) | Derivative of gaussian-splatting, same Inria/MPII **non-commercial** terms | 🔴 |
++| **nvdiffrast** v0.4.0 (NVlabs; installer: prebuilt cu124/torch2.5/cp310 wheel from github.com/PozzettiAndrea/cuda-wheels, SHA-256 pinned, else built from the v0.4.0 source) | Rasterisation in TRELLIS: hole filling (always), texture bake, mesh-normal video | **NVIDIA Source Code License (1-Way Commercial)**: §3.3 "may be used or intended for use non-commercially" = research or evaluation only, no direct or indirect monetary gain | 🔴 |
++| **diff-gaussian-rasterization** (mip-splatting submodule at dda02ab, built from source; the graphdeco prebuilt wheels lack the `kernel_size` / `subpixel_offset` TRELLIS needs) | Rendering the 3D Gaussians: the 100 texture views (Texture bake Fast/Quality) and the colour half of the 360° video | **Gaussian-Splatting License (Inria / MPII)**: research and evaluation only, commercial use needs Inria's consent | 🔴 |
++| ~~diffoctreerast~~ (JeffreyXiang) | **No longer installed** (only TRELLIS's radiance-field/octree renderer needs it, which the app never decodes; TRELLIS just warns) | Inria/MPII non-commercial | removed |
+ | flash-attn 2.7.1.post1 (bdashore3 Windows wheel) | Attention in TRELLIS | BSD-3-Clause | ✅ |
+ | xformers (optional, ATTN_BACKEND=xformers) | Attention alternative | BSD-3-Clause | ✅ |
+ | spconv-cu124 2.3.8 (+ cumm) | Sparse convolutions in TRELLIS | Apache-2.0 | ✅ |
+-| kaolin 0.17.0 (NVIDIA) | FlexiCubes helper (`check_tensor`) in TRELLIS mesh extraction | Apache-2.0 | ✅ |
+-| usd-core 26.8 (pulled in by kaolin) | not used directly | Tomorrow Open Source Technology License 1.0 (Apache-2.0 based, Pixar) | ✅ |
++| kaolin 0.17.0 (NVIDIA) | FlexiCubes helper (`check_tensor`) in TRELLIS mesh extraction. **start.bat only**; the installer uses `app/stubs/kaolin` (MIT, our own 20-line `check_tensor`) instead, which also drops usd-core, warp-lang and kaolin's Jupyter/Dash dependencies | Apache-2.0 | ✅ |
++| usd-core 26.8 (pulled in by kaolin, start.bat only) | not used directly | Tomorrow Open Source Technology License 1.0 (Apache-2.0 based, Pixar) | ✅ |
+ | FlexiCubes (TRELLIS submodule) | Mesh extraction | Apache-2.0 | ✅ |
+ | utils3d (EasternJournalist, git) | Camera maths in TRELLIS | MIT | ✅ |
+ | TRELLIS code (microsoft/TRELLIS, cloned by start.bat) | 3D generation pipeline | MIT | ✅ |
+@@ -45,11 +45,13 @@ Legend: ✅ permissive (MIT / BSD / Apache / ISC / PSF / HPND / MPL), 🟡 copyl
+ | pyvista 0.44.2 (VTK: BSD-3) | MIT | ✅ | |
+ | **pymeshfix 0.17.0** (TRELLIS hole filling, MeshFix) | **GPL-3.0** | 🟡 | |
+ | **igraph 0.11.8** (TRELLIS postprocessing) | **GPL-2.0-or-later** | 🟡 | |
+-| **plyfile** (imported by TRELLIS's Gaussian code; not in requirements.txt, see findings) | **GPL-3.0-or-later** | 🟡 | |
++| **plyfile 1.1.2** (imported by TRELLIS's Gaussian code; now in requirements.txt) | **GPL-3.0-or-later** | 🟡 | |
+ | **easydict 1.13** | **LGPL-3.0** | 🟡 | |
+ | open3d 0.19.0 (OBJ/PLY fallback in exporter) | MIT | ✅ | |
+ | transformers 4.50.3 | Apache-2.0 | ✅ | not used at runtime by the image pipeline |
+ | rembg 2.0.65 | MIT | ✅ | |
++| pywebview 6.2.1 (the QuokkaForm window) | BSD-3-Clause | ✅ | uses the Microsoft Edge WebView2 Runtime (Microsoft software licence, installed by Windows or Microsoft's own bootstrapper, not redistributed by us) |
++| pythonnet 3.2.1, clr-loader 0.3.1, bottle 0.13.4, proxy-tools 0.1.0 (pywebview dependencies) | MIT | ✅ | |
+ | onnxruntime 1.21.0 | MIT | ✅ | |
+ | sam2 1.1.0 (PyPI) | Apache-2.0 | ✅ | uploaded to PyPI by a third party (J. Insua), not by Meta; its Python files are identical to facebookresearch/sam2 `main` (checked with diff) |
+ | hydra-core 1.3.7, iopath 0.1.10 | MIT | ✅ | |
+@@ -68,3 +70,10 @@ Legend: ✅ permissive (MIT / BSD / Apache / ISC / PSF / HPND / MPL), 🟡 copyl
+ | matplotlib, kiwisolver, cycler (transitive) | PSF-based / BSD | ✅ | |
+ 
+ All other transitive packages in the Windows lock (173 in total) are MIT, BSD, Apache-2.0, ISC, PSF or MPL-2.0.
++
++## Build and install tools (not shipped inside the app)
++
++| Tool | Licence | Note |
++|---|---|---|
++| uv 0.13.5 (Astral), bundled as `tools\uv.exe` | MIT OR Apache-2.0 | installs the private Python 3.10 (python-build-standalone: PSF and others) and the packages |
++| Inno Setup 6 (compiles the setup .exe) | Inno Setup licence | free; recent versions print "non-commercial use only" unless a commercial licence is bought, which fits a free non-commercial app |
+-- 
+2.47.3
+

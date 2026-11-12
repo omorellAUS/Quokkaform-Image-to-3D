@@ -1,0 +1,84 @@
+From b03feb864021b603430610f7489681d0d3986077 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 14:52:22 +0800
+Subject: [PATCH] Simplify: allow 0.5-0.98 (was 0.9-0.98), default 0.95
+ unchanged; validated before generating
+
+---
+ README.md            |  2 +-
+ app/backend/model.py | 11 +++++++++++
+ app/main.py          |  9 +++++++--
+ 3 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 8385f18..a3495bb 100644
+--- a/README.md
++++ b/README.md
+@@ -31,7 +31,7 @@ Single-image and (experimental) multi-image modes use TRELLIS (`microsoft/TRELLI
+ - Optional quad-mesh OBJ (Instant Meshes) with a target quad count, for sculpting / retopology
+ - Flatten base (optional): slice the bottom 1 mm (adjustable) off STL/OBJ/PLY and close it with a flat face at Z = 0 so the model sits flat on the bed
+ - Re-export button: change size, triangle count or quad options and re-export in seconds without regenerating
+-- TRELLIS controls: seed, sampling steps / guidance for both stages, simplify, texture size
++- TRELLIS controls: seed, sampling steps / guidance for both stages, simplify (0.5-0.98, default 0.95; lower keeps more faces/detail but is slower), texture size
+ - Texture bake: **Fast** (default, one pass, seconds), **Quality** (TRELLIS optimisation, slower, about 4 GB more VRAM) or **None** (untextured GLB, fastest; STL printing does not use texture)
+ - Per-stage timings and peak VRAM in the console and the Export info box; the UI shows which stage is running
+ - Windows launcher (`start.bat`) that sets up a virtual environment and dependencies on first run
+diff --git a/app/backend/model.py b/app/backend/model.py
+index f131e6a..c738ba7 100644
+--- a/app/backend/model.py
++++ b/app/backend/model.py
+@@ -205,6 +205,17 @@ def render_turntable(mesh_result, gaussian, video_path: str, notes: Optional[lis
+     imageio.mimsave(video_path, frames, fps=plan["fps"])
+     return True
+ MAX_IMAGES = 6
++# Simplify = fraction of TRELLIS's faces removed before hole filling (pyvista
++# decimate). 0.95 is TRELLIS's default; 0.5 keeps half (~10x the faces of 0.95).
++SIMPLIFY_RANGE = (0.5, 0.98)
++
++
++def check_simplify(value) -> float:
++    lo, hi = SIMPLIFY_RANGE
++    v = float(value)
++    if not lo <= v <= hi:
++        raise ValueError(f"Simplify must be between {lo} and {hi}, got {v}.")
++    return v
+ 
+ 
+ def _sampler(pipe, name: str, n_images: int, steps, mode: str):
+diff --git a/app/main.py b/app/main.py
+index 7bab734..726a39d 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -11,7 +11,7 @@ import gradio as gr
+ from app import selection_ui
+ from app.backend.background import BG_MODELS, DEFAULT_BG_MODEL, DEFAULT_TOLERANCE, check_bg_model
+ from app.backend.exporter import check_target_faces
+-from app.backend.model import MAX_IMAGES, MULTI_IMAGE_MODES, check_video_seconds
++from app.backend.model import MAX_IMAGES, MULTI_IMAGE_MODES, check_simplify, check_video_seconds
+ from app.backend.selection import SAM_DOWNLOAD_MB
+ from app.backend.processor import check_tolerance, export_from_raw, generate_and_export, preview_cutout
+ from app.backend.runtime import free_cuda, release_exception
+@@ -77,6 +77,7 @@ def run_pipeline(
+         bg_model = check_bg_model(bg_model)
+         bg_tolerance = check_tolerance(bg_tolerance)
+         check_video_seconds(video_seconds)
++        check_simplify(simplify)
+     except ValueError as e:
+         raise gr.Error(str(e)) from e
+ 
+@@ -321,7 +322,11 @@ with gr.Blocks(title="Free Image-to-3D") as demo:
+                     slat_cfg = gr.Slider(0.0, 10.0, value=5.0, step=0.1, label="Guidance strength")
+ 
+             with gr.Accordion("Mesh export settings", open=False):
+-                simplify = gr.Slider(0.9, 0.98, value=0.95, step=0.01, label="Simplify (fraction of faces removed)")
++                simplify = gr.Slider(
++                    0.5, 0.98, value=0.95, step=0.01, label="Simplify (fraction of faces removed)",
++                    info="0.95 keeps 5% of TRELLIS's faces. Lower keeps more detail (0.5 keeps half, about 10x the "
++                         "faces of 0.95) but hole filling, UV unwrap and texture bake get slower and files bigger.",
++                )
+                 texture_size = gr.Slider(512, 2048, value=1024, step=512, label="Texture size")
+                 texture_mode = gr.Radio(
+                     choices=[(label, key) for key, label in TEXTURE_MODES.items()],
+-- 
+2.47.3
+

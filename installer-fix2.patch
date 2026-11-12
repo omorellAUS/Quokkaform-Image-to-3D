@@ -1,0 +1,424 @@
+From 88a795089fec6f1fbbf04e36ae154fd970a42cdd Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Tue, 27 Oct 2026 09:42:47 +0800
+Subject: [PATCH] 0.9.2: fix 'Connection errored out' on every action in the
+ desktop window
+
+Root cause: desktop.ServerThread imports app.main (builds the Gradio Blocks)
+and calls launch() in a worker thread. Gradio 4.44 creates its asyncio
+primitives (Queue.pending_message_lock / delete_lock, App.lock / stop_event)
+only when asyncio.get_event_loop() works in the constructing thread, and a
+non-main thread has no event loop, so they were silently None. Every queued
+event then failed in queueing.push (AttributeError: __aenter__) and the
+heartbeat stream in routes.stop_stream ('NoneType' object has no attribute
+'wait'). The dev start (python app/main.py) builds the UI in the main thread,
+which is why it worked there. Package versions are not involved (the same
+locked versions work in the main thread), so the lock is unchanged.
+
+- desktop.py: ensure_thread_event_loop() gives the server thread an event
+  loop before app.main is imported; after launch check_queue() verifies the
+  queue primitives and that the startup events ran, logs "Queue check: OK"
+  or a clear QUEUE CHECK FAILED message, and recreates missing primitives.
+- verify_runtime.py: a module whose __version__ lookup raises (utils3d's lazy
+  attribute loader: "No module named 'utils3d.__version__'") counts as
+  working; 0.9.1 setup stopped with a false "MISSING utils3d" and never wrote
+  the setup marker.
+- tests: test_server_queue.py starts the server exactly like desktop mode
+  (app.main built inside ServerThread) and completes a queued event over HTTP
+  (/queue/join + /queue/data); the desktop end-to-end test checks the log for
+  "Queue check: OK"; verify_runtime lazy-module test.
+- Version 0.9.2 (app/version.py, QuokkaForm.iss, README, INSTALL_WINDOWS.txt
+  with a note that updating over the top keeps the runtime and models).
+---
+ INSTALL_WINDOWS.txt          |   9 +-
+ README.md                    |   2 +-
+ app/desktop.py               |  61 ++++++++++++++
+ app/version.py               |   2 +-
+ installer/QuokkaForm.iss     |   2 +-
+ installer/verify_runtime.py  |  10 ++-
+ tests/test_desktop.py        |   1 +
+ tests/test_server_queue.py   | 155 +++++++++++++++++++++++++++++++++++
+ tests/test_verify_runtime.py |  13 +++
+ 9 files changed, 248 insertions(+), 7 deletions(-)
+ create mode 100644 tests/test_server_queue.py
+
+diff --git a/INSTALL_WINDOWS.txt b/INSTALL_WINDOWS.txt
+index c30a74f..da5d104 100644
+--- a/INSTALL_WINDOWS.txt
++++ b/INSTALL_WINDOWS.txt
+@@ -18,7 +18,7 @@ prebuilt texture-bake part cannot be used, see "Textures" below.)
+ 
+ Option A - Installer (recommended)
+ ----------------------------------
+-1. Run QuokkaForm-Setup-0.9.1.exe.
++1. Run QuokkaForm-Setup-0.9.2.exe.
+    Windows SmartScreen may say "Windows protected your PC" because the
+    installer is not code-signed (signing costs money). Click "More info",
+    then "Run anyway".
+@@ -31,9 +31,14 @@ Option A - Installer (recommended)
+ 5. Start it later from Start menu > QuokkaForm (or the desktop icon).
+    It opens in its own window; no browser and no console window.
+ 
++Updating: close QuokkaForm and run the new QuokkaForm-Setup-<version>.exe
++over the old one (no uninstall). The Python runtime, the packages and the
++models are kept; the setup only checks them, so nothing big is downloaded
++again (a few minutes).
++
+ Option B - Portable ZIP
+ -----------------------
+-1. Extract QuokkaForm-0.9.1-portable.zip anywhere (e.g. Documents).
++1. Extract QuokkaForm-0.9.2-portable.zip anywhere (e.g. Documents).
+ 2. Double-click QuokkaForm.cmd. The first time it runs the same setup,
+    later it opens the app straight away.
+ 3. "QuokkaForm Setup.cmd" repairs or reinstalls.
+diff --git a/README.md b/README.md
+index 6a62961..10fa25d 100644
+--- a/README.md
++++ b/README.md
+@@ -56,7 +56,7 @@ Single-image and (experimental) multi-image modes use TRELLIS (`microsoft/TRELLI
+ 
+ ## Install (Windows app)
+ 
+-Download **QuokkaForm-Setup-0.9.1.exe** (or the portable ZIP) and run it. No Python, Git, CUDA toolkit or admin rights needed: it installs per user to `%LOCALAPPDATA%\Programs\QuokkaForm`, sets up its own Python 3.10 and packages on first run (10-30 min) and opens QuokkaForm in its **own window** (no browser, no console). Full steps, where files live and repair: [INSTALL_WINDOWS.txt](INSTALL_WINDOWS.txt).
++Download **QuokkaForm-Setup-0.9.2.exe** (or the portable ZIP) and run it. No Python, Git, CUDA toolkit or admin rights needed: it installs per user to `%LOCALAPPDATA%\Programs\QuokkaForm`, sets up its own Python 3.10 and packages on first run (10-30 min) and opens QuokkaForm in its **own window** (no browser, no console). Full steps, where files live and repair: [INSTALL_WINDOWS.txt](INSTALL_WINDOWS.txt).
+ 
+ - Windows SmartScreen may warn because the installer is not code-signed: click **More info > Run anyway**.
+ - Needs an NVIDIA GPU (12 GB+ VRAM recommended, 8 GB minimum), driver 551.61+, about 15 GB free, and the Microsoft Edge WebView2 Runtime (on Windows 11 already; the installer offers it).
+diff --git a/app/desktop.py b/app/desktop.py
+index ed11a63..7a517be 100644
+--- a/app/desktop.py
++++ b/app/desktop.py
+@@ -27,6 +27,7 @@ import sys
+ import threading
+ import time
+ import traceback
++import warnings
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parent.parent
+@@ -305,6 +306,58 @@ LINK_GUARD_JS = r"""
+ 
+ # ------------------------------------------------------------------ server
+ 
++def ensure_thread_event_loop() -> None:
++    """Give the calling (non-main) thread its own asyncio event loop.
++
++    Gradio 4.x creates its asyncio primitives (``Queue.pending_message_lock``,
++    ``App.stop_event``, ...) when the Blocks and the server app are built, and
++    only if ``asyncio.get_event_loop()`` works in that thread; otherwise it
++    silently stores None. The main thread always gets a loop, a plain worker
++    thread does not, so building the UI in the server thread left them None:
++    every queued action then failed ("Connection errored out", AttributeError
++    __aenter__ / 'NoneType' object has no attribute 'wait'). The loop is never
++    run: since Python 3.10 these primitives bind to uvicorn's loop on first use.
++    """
++    import asyncio
++
++    try:
++        asyncio.get_running_loop()
++        return
++    except RuntimeError:
++        pass
++    try:
++        with warnings.catch_warnings():
++            warnings.simplefilter("ignore", DeprecationWarning)
++            asyncio.get_event_loop()
++    except RuntimeError:
++        asyncio.set_event_loop(asyncio.new_event_loop())
++
++
++def check_queue(demo, repair: bool = True) -> list:
++    """Problems with Gradio's queue primitives after launch ([] = fine).
++
++    With ``repair`` missing primitives are created (safe on Python 3.10+:
++    asyncio locks and events bind to the server loop on first use)."""
++    import asyncio
++
++    problems = []
++    queue = getattr(demo, "_queue", None)
++    app = getattr(demo, "server_app", None)
++    if queue is None or app is None:
++        return ["the Gradio server app or queue does not exist"]
++    for owner, attr, factory in ((queue, "pending_message_lock", asyncio.Lock),
++                                 (queue, "delete_lock", asyncio.Lock),
++                                 (app, "lock", asyncio.Lock),
++                                 (app, "stop_event", asyncio.Event)):
++        if getattr(owner, attr, None) is None:
++            problems.append(f"{type(owner).__name__}.{attr} is None")
++            if repair:
++                setattr(owner, attr, factory())
++    if not getattr(app, "startup_events_triggered", False):
++        problems.append("the queue was not started (startup events did not run)")
++    return problems
++
++
+ class ServerThread(threading.Thread):
+     """Imports app.main (the Gradio Blocks) and serves it on host:port."""
+ 
+@@ -317,11 +370,19 @@ class ServerThread(threading.Thread):
+ 
+     def run(self):
+         try:
++            ensure_thread_event_loop()  # before app.main builds the Blocks (see there)
+             from app import main as app_main, ui_theme
+ 
+             self.demo = app_main.demo
+             self.demo.launch(server_name=self.host, server_port=self.port, favicon_path=ui_theme.FAVICON,
+                              inbrowser=False, prevent_thread_lock=True, show_error=True, quiet=False)
++            problems = check_queue(self.demo)
++            if problems:
++                print("QUEUE CHECK FAILED: " + "; ".join(problems) + ". Actions would fail with "
++                      "'Connection errored out'; the missing parts were recreated. If actions still fail, "
++                      "run QuokkaForm Setup (repair) and send this log file.")
++            else:
++                print("Queue check: OK")
+             self.started_ok.set()
+         except BaseException as e:  # noqa: BLE001 - reported in the window
+             traceback.print_exc()
+diff --git a/app/version.py b/app/version.py
+index 6673fda..30ff330 100644
+--- a/app/version.py
++++ b/app/version.py
+@@ -1,4 +1,4 @@
+ """QuokkaForm version (shown by the installer, the desktop window and the logs)."""
+ APP_NAME = "QuokkaForm"
+-VERSION = "0.9.1"
++VERSION = "0.9.2"
+ PUBLISHER = "Perth Resoles"
+diff --git a/installer/QuokkaForm.iss b/installer/QuokkaForm.iss
+index 8eec8bd..f09a00e 100644
+--- a/installer/QuokkaForm.iss
++++ b/installer/QuokkaForm.iss
+@@ -17,7 +17,7 @@
+ #define AppName "QuokkaForm"
+ #define AppFullName "QuokkaForm - Images To Mesh"
+ ; Keep in sync with app/version.py (tests/test_installer_files.py checks it)
+-#define AppVersion "0.9.1"
++#define AppVersion "0.9.2"
+ #define AppPublisher "Perth Resoles"
+ #define SourceDir "..\dist\QuokkaForm"
+ #define AppIcon "app\assets\quokkaform.ico"
+diff --git a/installer/verify_runtime.py b/installer/verify_runtime.py
+index f4d3033..ad70e3e 100644
+--- a/installer/verify_runtime.py
++++ b/installer/verify_runtime.py
+@@ -45,11 +45,17 @@ def check_imports(checks=CHECKS, importer=importlib.import_module):
+     for module, label, required, hint in checks:
+         try:
+             m = importer(module)
+-            detail = getattr(m, "__version__", "") or "ok"
+-            rows.append((label, True, required, str(detail)))
+         except Exception as e:  # noqa: BLE001 - report every kind of failure
+             msg = f"{type(e).__name__}: {e}".splitlines()[0][:200]
+             rows.append((label, False, required, msg + (f" ({hint})" if hint else "")))
++            continue
++        try:
++            # some packages (utils3d) resolve unknown attributes lazily as
++            # submodules and raise ModuleNotFoundError for __version__
++            detail = getattr(m, "__version__", "") or "ok"
++        except Exception:  # noqa: BLE001 - imported fine, only no version
++            detail = "ok"
++        rows.append((label, True, required, str(detail)))
+     return rows
+ 
+ 
+diff --git a/tests/test_desktop.py b/tests/test_desktop.py
+index 5307657..4d8d68d 100644
+--- a/tests/test_desktop.py
++++ b/tests/test_desktop.py
+@@ -125,6 +125,7 @@ def test_end_to_end_starts_serves_and_stops(tmp_path):
+     # log file and window size were written
+     logs = list((tmp_path / "data" / "logs").glob("quokkaform-*.log"))
+     assert logs and "UI ready" in logs[0].read_text(encoding="utf-8")
++    assert "Queue check: OK" in logs[0].read_text(encoding="utf-8")   # 0.9.2: queued events work
+     assert json.loads((tmp_path / "cfg" / "window.json").read_text())["width"] == 1500
+     assert time.time() - t0 < 240
+ 
+diff --git a/tests/test_server_queue.py b/tests/test_server_queue.py
+new file mode 100644
+index 0000000..b227386
+--- /dev/null
++++ b/tests/test_server_queue.py
+@@ -0,0 +1,155 @@
++"""Regression test for 0.9.2: queued Gradio events in desktop mode.
++
++The desktop launcher builds and launches the Gradio app in a worker thread
++(desktop.ServerThread). Gradio 4.x only creates its asyncio lock / stop event
++when that thread has an event loop, so in 0.9.1 every queued action failed
++("Connection errored out"; AttributeError __aenter__ in queueing.push and
++'NoneType' object has no attribute 'wait' in routes.stop_stream).
++
++This starts the server exactly like desktop mode does (ServerThread imports
++``app.main`` *inside* the thread) with a tiny stand-in for app.main, and runs
++a queued event over HTTP (/queue/join + /queue/data).
++"""
++import importlib.abc
++import importlib.util
++import json
++import socket
++import sys
++import uuid
++
++import pytest
++
++gr = pytest.importorskip("gradio")
++httpx = pytest.importorskip("httpx")
++
++from app import desktop  # noqa: E402
++from app.backend import instance  # noqa: E402
++
++STUB_MAIN = '''
++import gradio as gr
++with gr.Blocks() as demo:
++    box_in = gr.Textbox()
++    box_out = gr.Textbox()
++    btn = gr.Button()
++    btn.click(lambda s: s[::-1], box_in, box_out, api_name="reverse")   # queued (default)
++'''
++
++
++class _StubMainFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
++    """Serves a small Blocks as ``app.main``, built when it is imported."""
++
++    def find_spec(self, name, path, target=None):
++        return importlib.util.spec_from_loader(name, self) if name == "app.main" else None
++
++    def create_module(self, spec):
++        return None
++
++    def exec_module(self, module):
++        exec(STUB_MAIN, module.__dict__)
++
++
++@pytest.fixture
++def stub_app_main():
++    import app as app_pkg
++
++    saved_mod = sys.modules.pop("app.main", None)
++    had_attr = hasattr(app_pkg, "main")
++    saved_attr = getattr(app_pkg, "main", None)
++    if had_attr:
++        delattr(app_pkg, "main")
++    finder = _StubMainFinder()
++    sys.meta_path.insert(0, finder)
++    try:
++        yield
++    finally:
++        sys.meta_path.remove(finder)
++        sys.modules.pop("app.main", None)
++        if saved_mod is not None:
++            sys.modules["app.main"] = saved_mod
++        if had_attr:
++            app_pkg.main = saved_attr
++        elif hasattr(app_pkg, "main"):
++            delattr(app_pkg, "main")
++
++
++def _free_port():
++    with socket.socket() as s:
++        s.bind(("127.0.0.1", 0))
++        return s.getsockname()[1]
++
++
++def _queued_round_trip(url, fn_index, text, timeout=30):
++    session = uuid.uuid4().hex[:10]
++    with httpx.Client(base_url=url, timeout=timeout, trust_env=False) as c:
++        r = c.post("queue/join", json={"data": [text], "fn_index": fn_index, "session_hash": session,
++                                        "event_data": None, "trigger_id": None})
++        assert r.status_code == 200, r.text
++        with c.stream("GET", "queue/data", params={"session_hash": session}) as stream:
++            assert stream.status_code == 200
++            for line in stream.iter_lines():
++                if not line.startswith("data:"):
++                    continue
++                msg = json.loads(line[5:])
++                if msg.get("msg") == "process_completed":
++                    return msg
++    raise AssertionError("no process_completed message")
++
++
++def test_desktop_server_thread_runs_queued_events(stub_app_main, capsys):
++    port = _free_port()
++    server = desktop.ServerThread("127.0.0.1", port)
++    server.start()
++    url = instance.url_for("127.0.0.1", port)
++    try:
++        assert instance.wait_until_ready(url, alive=server.alive, timeout=60), repr(server.error)
++        demo = server.demo
++        # Gradio's async primitives exist without any repair
++        assert "Queue check: OK" in capsys.readouterr().out
++        assert demo._queue.pending_message_lock is not None
++        assert demo.server_app.stop_event is not None
++        assert desktop.check_queue(demo) == []
++        fn_index = next(i for i, fn in demo.fns.items() if fn.api_name == "reverse")
++        msg = _queued_round_trip(url, fn_index, "quokka")
++        assert msg["success"] is True, msg
++        assert msg["output"]["data"] == ["akkouq"]
++    finally:
++        server.stop()
++
++
++def test_check_queue_reports_and_repairs_missing_primitives():
++    class Q:
++        pending_message_lock = None
++        delete_lock = object()
++
++    class A:
++        lock = object()
++        stop_event = None
++        startup_events_triggered = True
++
++    class D:
++        _queue, server_app = Q(), A()
++
++    d = D()
++    problems = desktop.check_queue(d)
++    assert problems == ["Q.pending_message_lock is None", "A.stop_event is None"]
++    assert d._queue.pending_message_lock is not None and d.server_app.stop_event is not None
++    assert desktop.check_queue(d) == []
++    d.server_app.startup_events_triggered = False
++    assert "startup events" in desktop.check_queue(d)[0]
++    assert desktop.check_queue(object()) == ["the Gradio server app or queue does not exist"]
++
++
++def test_server_thread_gets_an_event_loop():
++    import asyncio
++    import threading
++
++    seen = {}
++
++    def worker():
++        desktop.ensure_thread_event_loop()
++        seen["loop"] = asyncio.get_event_loop()
++
++    t = threading.Thread(target=worker)
++    t.start()
++    t.join(10)
++    assert isinstance(seen.get("loop"), asyncio.AbstractEventLoop)
+diff --git a/tests/test_verify_runtime.py b/tests/test_verify_runtime.py
+index 8bb17c2..eba22d7 100644
+--- a/tests/test_verify_runtime.py
++++ b/tests/test_verify_runtime.py
+@@ -19,6 +19,19 @@ def test_check_imports_reports_failures():
+     assert rows[1][1] is False and "DLL load failed" in rows[1][3] and "optional hint" in rows[1][3]
+ 
+ 
++def test_lazy_module_without_version_counts_as_working():
++    """utils3d resolves unknown attributes as submodules: reading __version__
++    raises ModuleNotFoundError although the import worked (0.9.1 setup then
++    stopped with 'MISSING utils3d')."""
++    class Lazy:
++        def __getattr__(self, name):
++            raise ModuleNotFoundError(f"No module named 'utils3d.{name}'")
++
++    rows = vr.check_imports([("utils3d", "utils3d", True, "")], lambda name: Lazy())
++    assert rows == [("utils3d", True, True, "ok")]
++    assert vr.summarise(rows) == 0
++
++
+ def test_summarise():
+     assert vr.summarise([("a", True, True, "")]) == 0
+     assert vr.summarise([("a", True, True, ""), ("b", False, False, "")]) == 2
+-- 
+2.47.3
+

@@ -1,0 +1,611 @@
+From 0d76bd71983921b17703084e38b986803d05d5a1 Mon Sep 17 00:00:00 2001
+From: Grok Bot <grok-bot@localhost>
+Date: Mon, 26 Oct 2026 23:58:06 +0800
+Subject: [PATCH] Setup 0.9.1: Python 3.10 without uv's minor-version junction
+ (fixes Windows error 448)
+
+On some PCs (e.g. OneDrive Files On-Demand or security software) Windows
+blocks the 'cpython-3.10-windows-x86_64-none' junction that uv 0.13 always
+makes after unpacking Python ("untrusted mount point", os error 448), and
+0.9.0 stopped with a wrong "internet connection?" hint.
+
+- Python 3.10.22 is pinned and requested with 'uv python install 3.10.22
+  --no-bin --no-registry'; a failure after unpacking is accepted, because
+  only the real cpython-3.10.22-... folder is used
+- the venv is made with 'uv venv --python <full path to python.exe>' and
+  UV_PYTHON_INSTALL_DIR unset, so it never points through the junction;
+  pyvenv.cfg 'home' is checked and corrected if it does
+- fallbacks: the same python-build-standalone archive downloaded directly
+  (SHA-256 pinned, unpacked with Windows' tar.exe), then an installed
+  64-bit Python 3.10 (py -3.10-64, PATH, the usual python.org folders)
+- a Python already unpacked by a failed run is reused and a half-made venv
+  is replaced, so the repair resumes
+- UV_PYTHON_DOWNLOADS=manual: uv never fetches a Python by itself
+- errors show uv's own message; error 448 gets an accurate hint
+- tests/test_setup_runtime_ps1.py: runs the script under pwsh with fake
+  uv / python / nvidia-smi, incl. the 448 failure and every fallback
+- version 0.9.1; INSTALL_WINDOWS.txt troubleshooting note
+---
+ INSTALL_WINDOWS.txt             |  14 +-
+ README.md                       |   2 +-
+ app/version.py                  |   2 +-
+ installer/QuokkaForm.iss        |   2 +-
+ installer/setup_runtime.ps1     | 190 ++++++++++++++++++++++++-
+ tests/test_setup_runtime_ps1.py | 245 ++++++++++++++++++++++++++++++++
+ 6 files changed, 445 insertions(+), 10 deletions(-)
+ create mode 100644 tests/test_setup_runtime_ps1.py
+
+diff --git a/INSTALL_WINDOWS.txt b/INSTALL_WINDOWS.txt
+index 480524a..c30a74f 100644
+--- a/INSTALL_WINDOWS.txt
++++ b/INSTALL_WINDOWS.txt
+@@ -18,7 +18,7 @@ prebuilt texture-bake part cannot be used, see "Textures" below.)
+ 
+ Option A - Installer (recommended)
+ ----------------------------------
+-1. Run QuokkaForm-Setup-0.9.0.exe.
++1. Run QuokkaForm-Setup-0.9.1.exe.
+    Windows SmartScreen may say "Windows protected your PC" because the
+    installer is not code-signed (signing costs money). Click "More info",
+    then "Run anyway".
+@@ -33,7 +33,7 @@ Option A - Installer (recommended)
+ 
+ Option B - Portable ZIP
+ -----------------------
+-1. Extract QuokkaForm-0.9.0-portable.zip anywhere (e.g. Documents).
++1. Extract QuokkaForm-0.9.1-portable.zip anywhere (e.g. Documents).
+ 2. Double-click QuokkaForm.cmd. The first time it runs the same setup,
+    later it opens the app straight away.
+ 3. "QuokkaForm Setup.cmd" repairs or reinstalls.
+@@ -44,6 +44,16 @@ Start menu > QuokkaForm Setup (repair), or "QuokkaForm Setup.cmd" in the
+ install folder. Add -Reinstall to rebuild the Python environment:
+   powershell -ExecutionPolicy Bypass -File installer\setup_runtime.ps1 -Reinstall
+ 
++If setup stops at "Python 3.10"
++------------------------------
++Setup gets Python 3.10 in this order: uv's download, then the same Python
++build downloaded directly (checked by SHA-256), then a 64-bit Python 3.10
++already installed on the PC (python.org). On some PCs Windows blocks the
++folder link uv makes ("os error 448 / untrusted mount point", often
++OneDrive Files On-Demand or security software); QuokkaForm 0.9.1 and later
++do not need that link. If all three fail, install Python 3.10 64-bit from
++https://www.python.org/downloads/release/python-31011/ and run the repair.
++
+ Where things live
+ -----------------
+ - Program:   %LOCALAPPDATA%\Programs\QuokkaForm (installer) or the ZIP folder
+diff --git a/README.md b/README.md
+index fac2969..6a62961 100644
+--- a/README.md
++++ b/README.md
+@@ -56,7 +56,7 @@ Single-image and (experimental) multi-image modes use TRELLIS (`microsoft/TRELLI
+ 
+ ## Install (Windows app)
+ 
+-Download **QuokkaForm-Setup-0.9.0.exe** (or the portable ZIP) and run it. No Python, Git, CUDA toolkit or admin rights needed: it installs per user to `%LOCALAPPDATA%\Programs\QuokkaForm`, sets up its own Python 3.10 and packages on first run (10-30 min) and opens QuokkaForm in its **own window** (no browser, no console). Full steps, where files live and repair: [INSTALL_WINDOWS.txt](INSTALL_WINDOWS.txt).
++Download **QuokkaForm-Setup-0.9.1.exe** (or the portable ZIP) and run it. No Python, Git, CUDA toolkit or admin rights needed: it installs per user to `%LOCALAPPDATA%\Programs\QuokkaForm`, sets up its own Python 3.10 and packages on first run (10-30 min) and opens QuokkaForm in its **own window** (no browser, no console). Full steps, where files live and repair: [INSTALL_WINDOWS.txt](INSTALL_WINDOWS.txt).
+ 
+ - Windows SmartScreen may warn because the installer is not code-signed: click **More info > Run anyway**.
+ - Needs an NVIDIA GPU (12 GB+ VRAM recommended, 8 GB minimum), driver 551.61+, about 15 GB free, and the Microsoft Edge WebView2 Runtime (on Windows 11 already; the installer offers it).
+diff --git a/app/version.py b/app/version.py
+index dd95b8b..6673fda 100644
+--- a/app/version.py
++++ b/app/version.py
+@@ -1,4 +1,4 @@
+ """QuokkaForm version (shown by the installer, the desktop window and the logs)."""
+ APP_NAME = "QuokkaForm"
+-VERSION = "0.9.0"
++VERSION = "0.9.1"
+ PUBLISHER = "Perth Resoles"
+diff --git a/installer/QuokkaForm.iss b/installer/QuokkaForm.iss
+index ccb9316..8eec8bd 100644
+--- a/installer/QuokkaForm.iss
++++ b/installer/QuokkaForm.iss
+@@ -17,7 +17,7 @@
+ #define AppName "QuokkaForm"
+ #define AppFullName "QuokkaForm - Images To Mesh"
+ ; Keep in sync with app/version.py (tests/test_installer_files.py checks it)
+-#define AppVersion "0.9.0"
++#define AppVersion "0.9.1"
+ #define AppPublisher "Perth Resoles"
+ #define SourceDir "..\dist\QuokkaForm"
+ #define AppIcon "app\assets\quokkaform.ico"
+diff --git a/installer/setup_runtime.ps1 b/installer/setup_runtime.ps1
+index 10d8cfd..c352b98 100644
+--- a/installer/setup_runtime.ps1
++++ b/installer/setup_runtime.ps1
+@@ -6,7 +6,8 @@
+     Installs everything QuokkaForm needs for the current user, without admin
+     rights and without a system Python:
+       1. checks the NVIDIA GPU, driver and VRAM (friendly messages)
+-      2. Python 3.10 managed by uv     -> %LOCALAPPDATA%\QuokkaForm\runtime\python
++      2. Python 3.10 (uv download, else the same pinned build directly,
++         else an installed Python 3.10) -> %LOCALAPPDATA%\QuokkaForm\runtime\python
+       3. a virtual environment         -> %LOCALAPPDATA%\QuokkaForm\runtime\venv
+       4. the pinned packages (installer\requirements-lock-win.txt, torch 2.5.1 + CUDA 12.4)
+       5. nvdiffrast: bundled wheel, else the pinned prebuilt wheel (SHA-256
+@@ -66,6 +67,14 @@ $GoodVramMB = 11500                 # 12 GB cards: everything at default setting
+ $NvdrWheelName = 'nvdiffrast-0.4.0+cu124torch2.5-cp310-cp310-win_amd64.whl'
+ $NvdrWheelUrl  = 'https://github.com/PozzettiAndrea/cuda-wheels/releases/download/nvdiffrast-latest/nvdiffrast-0.4.0%2Bcu124torch2.5-cp310-cp310-win_amd64.whl'
+ $NvdrWheelSha  = '63a17c0b23308ef7253d90ca0a763f1cf0e6916b1885621a0da4b5a3f271b873'
++# Python 3.10 for the runtime. uv installs it; the same python-build-standalone
++# build (the one uv 0.13.5 picks for 3.10.22) is the direct-download fallback.
++$PyVersion    = '3.10.22'
++$PyRoot       = Join-Path $Runtime 'python'
++$PyDirName    = 'cpython-3.10.22-windows-x86_64-none'
++$PyArchive    = 'cpython-3.10.22+20261009-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
++$PyArchiveUrl = 'https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.10.22%2B20261009-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
++$PyArchiveSha = 'f20288c45ff11e7fe026f40ddcfb2acfe695cec18860746639e289142a589745'
+ # Sources (GitHub archives at pinned commits; no Git needed)
+ $NvdrSource = 'nvdiffrast @ https://github.com/NVlabs/nvdiffrast/archive/253ac4fcea7de5f396371124af597e6cc957bfae.zip'
+ $DgrSource  = 'diff_gaussian_rasterization @ https://github.com/autonomousvision/mip-splatting/archive/dda02ab5ecf45d6edb8c540d9bb65c7e451345a9.zip#subdirectory=submodules/diff-gaussian-rasterization'
+@@ -124,14 +133,23 @@ function Ask([string]$Question, [bool]$Default) {
+ # Run a program, show and log its output (stdout and stderr), return the exit code.
+ function Invoke-Tool([string]$Exe, [string[]]$Arguments) {
+     Add-LogLine ('> "' + $Exe + '" ' + ($Arguments -join ' '))
++    $script:ToolOutput = @()
+     & $Exe @Arguments 2>&1 | ForEach-Object {
+         $line = "$_"
+         Write-Host $line
+         Add-LogLine $line
++        $script:ToolOutput += $line
+     }
+     return $LASTEXITCODE
+ }
+ 
++# The error lines of the last Invoke-Tool call (for messages).
++function Get-ToolError {
++    $errors = @($script:ToolOutput | Where-Object { $_ -match '^\s*(error|cause|caused by)' })
++    if ($errors.Count -eq 0) { $errors = @($script:ToolOutput | Select-Object -Last 3) }
++    return (($errors | ForEach-Object { $_.Trim() }) -join ' / ')
++}
++
+ # True if the runtime's Python can import the module.
+ function Test-Import([string]$Module) {
+     if (-not (Test-Path $VenvPy)) { return $false }
+@@ -228,6 +246,128 @@ function Initialize-Toolchain {
+     return $true
+ }
+ 
++# True if $Exe is a working 64-bit Python 3.10.
++function Test-Python([string]$Exe) {
++    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) { return $false }
++    & $Exe -c 'import sys, struct; sys.exit(0 if sys.version_info[:2] == (3, 10) and struct.calcsize(''P'') == 8 else 1)' 2>$null | Out-Null
++    return ($LASTEXITCODE -eq 0)
++}
++
++function Test-ReparsePoint([string]$Path) {
++    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
++    return ($null -ne $item) -and (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
++}
++
++# A Python 3.10 already unpacked in runtime\python, in a real folder (never
++# through uv's 'cpython-3.10-...' junction). Newest patch version first.
++function Find-RuntimePython {
++    $dirs = @(Get-ChildItem -LiteralPath $PyRoot -Directory -ErrorAction SilentlyContinue |
++        Where-Object { $_.Name -match '^cpython-3\.10\.\d+-windows-x86_64-none$' -and -not (Test-ReparsePoint $_.FullName) } |
++        Sort-Object { [int]($_.Name -replace '^cpython-3\.10\.(\d+)-.*$', '$1') } -Descending)
++    foreach ($d in $dirs) {
++        $exe = Join-Path $d.FullName 'python.exe'
++        if (Test-Python $exe) { return $exe }
++    }
++    return $null
++}
++
++# 1st way: uv downloads and unpacks Python. uv then also makes a
++# 'cpython-3.10-...' junction; some PCs block that (Windows error 448
++# "untrusted mount point", e.g. OneDrive Files On-Demand or security
++# software) and uv reports failure although Python is unpacked and fine.
++# QuokkaForm never uses the junction, so only the unpacked folder counts.
++function Install-PythonWithUv {
++    $env:UV_PYTHON_INSTALL_DIR = $PyRoot
++    $code = Invoke-Tool $Uv @('python', 'install', $PyVersion, '--no-bin', '--no-registry')
++    Remove-Item Env:UV_PYTHON_INSTALL_DIR -ErrorAction SilentlyContinue
++    $script:UvPythonError = ''
++    if ($code -ne 0) { $script:UvPythonError = Get-ToolError }
++    $exe = Find-RuntimePython
++    if ($exe -and $code -ne 0) {
++        Say ('uv could not make its optional "cpython-3.10" folder link (' + $script:UvPythonError + ').') 'Yellow'
++        Say 'That link is not needed: Python itself was unpacked correctly and is used directly.' 'Yellow'
++    }
++    return $exe
++}
++
++# 2nd way: the same Python build downloaded directly (SHA-256 checked) and
++# unpacked with Windows' own tar.exe.
++function Install-PythonDirect {
++    $archive = Join-Path $Downloads $PyArchive
++    $target = Join-Path $PyRoot $PyDirName
++    $tmp = Join-Path $PyRoot '.quokkaform-unpack'
++    try {
++        if (-not (Test-Path -LiteralPath $archive)) {
++            Say ('Downloading Python ' + $PyVersion + ': ' + $PyArchiveUrl)
++            Invoke-WebRequest -UseBasicParsing -Uri $PyArchiveUrl -OutFile ($archive + '.part')
++            Move-Item -Force -LiteralPath ($archive + '.part') -Destination $archive
++        }
++        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLower()
++        if ($hash -ne $PyArchiveSha) {
++            Remove-Item -LiteralPath $archive -ErrorAction SilentlyContinue
++            Say ('The Python download has an unexpected SHA-256 (' + $hash + '); not using it.') 'Yellow'
++            return $null
++        }
++        $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
++        if (-not (Test-Path -LiteralPath $tar)) {
++            $cmd = Get-Command 'tar.exe', 'tar' -ErrorAction SilentlyContinue | Select-Object -First 1
++            if ($null -eq $cmd) { Say 'tar.exe (part of Windows 10 1803 and newer) was not found.' 'Yellow'; return $null }
++            $tar = $cmd.Source
++        }
++        if (Test-Path -LiteralPath $tmp) { Remove-Item -Recurse -Force -LiteralPath $tmp }
++        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
++        if ((Invoke-Tool $tar @('-xzf', $archive, '-C', $tmp)) -ne 0) { return $null }
++        if (Test-Path -LiteralPath $target) { Remove-Item -Recurse -Force -LiteralPath $target }
++        Move-Item -LiteralPath (Join-Path $tmp 'python') -Destination $target
++        Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
++    } catch {
++        Say ('Direct Python download / unpack failed: ' + $_.Exception.Message) 'Yellow'
++        return $null
++    }
++    $exe = Join-Path $target 'python.exe'
++    if (Test-Python $exe) { return $exe }
++    return $null
++}
++
++# 3rd way: a 64-bit Python 3.10 already installed on this PC (python.org).
++function Find-SystemPython {
++    $candidates = @()
++    $launcher = Get-Command 'py.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
++    if ($launcher) {
++        $out = & $launcher.Source '-3.10-64' '-c' 'import sys; print(sys.executable)' 2>$null
++        if ($LASTEXITCODE -eq 0 -and $out) { $candidates += ("" + @($out)[0]).Trim() }
++    }
++    foreach ($c in @(Get-Command 'python.exe' -All -ErrorAction SilentlyContinue)) {
++        if ($c.Source -notmatch '\\WindowsApps\\') { $candidates += $c.Source }   # skip the Microsoft Store stub
++    }
++    $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310\python.exe')
++    if ($env:ProgramFiles) { $candidates += (Join-Path $env:ProgramFiles 'Python310\python.exe') }
++    foreach ($exe in $candidates) {
++        if (Test-Python $exe) { return $exe }
++    }
++    return $null
++}
++
++# The venv must point at the real Python folder, not at a junction.
++function Repair-VenvHome([string]$BaseExe) {
++    $cfg = Join-Path $Venv 'pyvenv.cfg'
++    if (-not (Test-Path -LiteralPath $cfg)) { return }
++    $want = Split-Path -Parent $BaseExe
++    $lines = @(Get-Content -LiteralPath $cfg)
++    $changed = $false
++    for ($i = 0; $i -lt $lines.Count; $i++) {
++        if ($lines[$i] -match '^\s*home\s*=\s*(.*?)\s*$') {
++            $current = $Matches[1]
++            if ($current -ne $want) {
++                Say ('pyvenv.cfg: home ' + $current + ' -> ' + $want)
++                $lines[$i] = 'home = ' + $want
++                $changed = $true
++            }
++        }
++    }
++    if ($changed) { [System.IO.File]::WriteAllLines($cfg, [string[]]$lines) }
++}
++
+ # ---------------------------------------------------------------- 0. start
+ $Version = 'unknown'
+ $versionFile = Join-Path $AppDir 'VERSION.txt'
+@@ -283,8 +423,11 @@ if (-not (Test-Path $Uv)) {
+     $Uv = $cmd.Source
+ }
+ $env:UV_CACHE_DIR = Join-Path $DataDir 'cache\uv'
+-$env:UV_PYTHON_INSTALL_DIR = Join-Path $Runtime 'python'
+-$env:UV_PYTHON_PREFERENCE = 'only-managed'   # never use or change a system Python
++# Python is chosen explicitly below (full path, never uv's minor-version
++# junction), so uv must not look for or download one by itself.
++Remove-Item Env:UV_PYTHON_INSTALL_DIR -ErrorAction SilentlyContinue
++Remove-Item Env:UV_PYTHON_PREFERENCE -ErrorAction SilentlyContinue
++$env:UV_PYTHON_DOWNLOADS = 'manual'          # only the explicit 'uv python install' below
+ $env:UV_NO_CONFIG = '1'                      # ignore any uv.toml of the user
+ $env:UV_HTTP_TIMEOUT = '300'
+ $env:SAM2_BUILD_CUDA = '0'
+@@ -309,9 +452,46 @@ if (Test-Path $VenvPy) {
+     }
+ }
+ if (-not (Test-Path $VenvPy)) {
+-    if ((Invoke-Tool $Uv @('venv', $Venv, '--python', '3.10')) -ne 0) {
+-        Fail 'Could not install Python 3.10 / create the environment (internet connection?).'
++    New-Item -ItemType Directory -Force -Path $PyRoot | Out-Null
++    $BasePy = Find-RuntimePython
++    if ($BasePy) {
++        Say ('Python 3.10 is already unpacked: ' + $BasePy)
++    } else {
++        $BasePy = Install-PythonWithUv
++    }
++    if (-not $BasePy) {
++        Say 'uv could not install Python; downloading the same Python build directly ...' 'Yellow'
++        $BasePy = Install-PythonDirect
++    }
++    if (-not $BasePy) {
++        Say 'Looking for a Python 3.10 (64-bit) already installed on this PC ...' 'Yellow'
++        $BasePy = Find-SystemPython
++        if ($BasePy) {
++            Warn ('Using the Python 3.10 installed at ' + $BasePy + '. Keep it installed while you use QuokkaForm ' +
++                  '(QuokkaForm does not change it).')
++        }
++    }
++    if (-not $BasePy) {
++        $detail = ''
++        if ($script:UvPythonError) { $detail = ' uv reported: ' + $script:UvPythonError + '.' }
++        if ($script:UvPythonError -match '448|untrusted mount point') {
++            Fail ('Could not set up Python 3.10.' + $detail + ' Windows error 448 means a file-system filter (often OneDrive ' +
++                  'Files On-Demand or security software) blocked a folder link; it is not an internet problem. ' +
++                  'Install Python 3.10 64-bit from https://www.python.org/downloads/release/python-31011/ ' +
++                  '(Windows installer 64-bit), then run the repair again: it will use that Python.')
++        }
++        Fail ('Could not set up Python 3.10.' + $detail + ' Check the internet connection (github.com must be reachable), ' +
++              'or install Python 3.10 64-bit from https://www.python.org/downloads/release/python-31011/ and run the repair again.')
++    }
++    # A half-made environment from an earlier failed run is removed first.
++    if (Test-Path $Venv) { Remove-Item -Recurse -Force $Venv -ErrorAction SilentlyContinue }
++    if ((Invoke-Tool $Uv @('venv', $Venv, '--python', $BasePy)) -ne 0) {
++        Fail ('Could not create the Python environment in ' + $Venv + ' (uv: ' + (Get-ToolError) + '). ' +
++              'Close QuokkaForm and any Python windows, then run the repair again.')
+     }
++    Repair-VenvHome $BasePy
++    if (-not (Test-Python $VenvPy)) { Fail ('The new Python environment in ' + $Venv + ' does not start.') }
++    Say ('Environment ready: ' + $Venv + ' (Python ' + $BasePy + ')')
+ }
+ Remove-Item $Marker -ErrorAction SilentlyContinue
+ 
+diff --git a/tests/test_setup_runtime_ps1.py b/tests/test_setup_runtime_ps1.py
+new file mode 100644
+index 0000000..4f249f1
+--- /dev/null
++++ b/tests/test_setup_runtime_ps1.py
+@@ -0,0 +1,245 @@
++"""Runs installer/setup_runtime.ps1 under PowerShell 7 on Linux with fake
++uv / python / nvidia-smi programs, to check the Python 3.10 step and its
++fallbacks (incl. the Windows error 448 'untrusted mount point' failure seen
++when uv makes its 'cpython-3.10-...' junction). Skipped where pwsh is missing
++(and on Windows, where the bash fakes cannot run)."""
++import hashlib
++import io
++import os
++import re
++import shutil
++import subprocess
++import sys
++import tarfile
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parent.parent
++PWSH = os.environ.get("QF_PWSH") or shutil.which("pwsh") or str(Path.home() / ".local/pwsh/pwsh")
++pytestmark = pytest.mark.skipif(sys.platform == "win32" or not Path(PWSH).exists(),
++                                reason="needs PowerShell 7 (pwsh) on Linux/macOS")
++
++PY_DIR = "cpython-3.10.22-windows-x86_64-none"
++LINK_DIR = "cpython-3.10-windows-x86_64-none"
++
++FAKE_PY = r"""#!/bin/bash
++echo "FAKEPY $0 $*" >> "$QF_T/calls.log"
++venv=$(dirname "$(dirname "$0")")
++if [ "$1" = "-c" ]; then
++  mod=$(echo "$2" | sed -n 's/^import \([a-z_.]*\)$/\1/p')
++  if [ -n "$mod" ]; then
++    for m in $FAKE_MISSING; do if [ "$m" = "$mod" ] && [ ! -e "$venv/installed_$mod" ]; then exit 1; fi; done
++  fi
++  case "$2" in *print*) echo "$0";; esac
++  exit 0
++fi
++echo "  OK  verify (fake)"; exit 0
++"""
++
++FAKE_UV = r"""#!/bin/bash
++echo "FAKEUV $* | INSTALL_DIR=${UV_PYTHON_INSTALL_DIR-unset} DOWNLOADS=${UV_PYTHON_DOWNLOADS-unset}" >> "$QF_T/calls.log"
++case "$1" in
++--version) echo "uv 0.13.5 (fake)"; exit 0;;
++python)
++  d="$UV_PYTHON_INSTALL_DIR/cpython-3.10.22-windows-x86_64-none"
++  case "$FAKE_UV_PY" in
++  ok) mkdir -p "$d"; cp "$QF_T/fakepy" "$d/python.exe"; ln -sfn "$d" "$UV_PYTHON_INSTALL_DIR/cpython-3.10-windows-x86_64-none"
++      echo "Installed Python 3.10.22"; exit 0;;
++  448) mkdir -p "$d"; cp "$QF_T/fakepy" "$d/python.exe"
++      echo "error: Failed to create Python minor version link directory" >&2
++      echo "  cause: The path cannot be traversed because it contains an untrusted mount point. (os error 448)" >&2; exit 2;;
++  448-noextract)
++      echo "error: Failed to create Python minor version link directory" >&2
++      echo "  cause: The path cannot be traversed because it contains an untrusted mount point. (os error 448)" >&2; exit 2;;
++  esac;;
++venv)
++  mkdir -p "$2/Scripts"; cp "$QF_T/fakepy" "$2/Scripts/python.exe"
++  home=$(dirname "$4"); [ -n "$FAKE_VENV_HOME" ] && home="$FAKE_VENV_HOME"
++  printf 'home = %s\nimplementation = CPython\nversion_info = 3.10.22\n' "$home" > "$2/pyvenv.cfg"; exit 0;;
++pip)
++  venv=$(dirname "$(dirname "$4")")
++  for a in "$@"; do
++    case "$a" in *nvdiffrast*) touch "$venv/installed_nvdiffrast.torch";; *diff_gaussian*) touch "$venv/installed_diff_gaussian_rasterization";; esac
++  done
++  echo "Installed packages (fake)"; exit ${FAKE_UV_PIP_RC:-0};;
++esac
++exit 0
++"""
++
++
++def _exe(path: Path, text: str):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(text)
++    path.chmod(0o755)
++
++
++@pytest.fixture
++def env(tmp_path):
++    t = tmp_path
++    app = t / "QuokkaForm"
++    (app / "installer").mkdir(parents=True)
++    for f in ("setup_runtime.ps1", "verify_runtime.py", "requirements-lock-win.txt"):
++        shutil.copy(ROOT / "installer" / f, app / "installer" / f)
++    (app / "VERSION.txt").write_text("QuokkaForm test\n")
++    (app / "wheels").mkdir()
++    (app / "wheels" / "nvdiffrast-0.4.0-cp310-cp310-win_amd64.whl").write_text("x")
++    (app / "wheels" / "diff_gaussian_rasterization-0.0.0-cp310-cp310-win_amd64.whl").write_text("x")
++    _exe(t / "fakepy", FAKE_PY)
++    _exe(app / "tools" / "uv.exe", FAKE_UV)
++    _exe(t / "win" / "System32" / "nvidia-smi.exe", '#!/bin/bash\necho "NVIDIA GeForce RTX 3060, 610.62, 12288"\n')
++    (t / "local").mkdir()
++    (t / "bin").mkdir()
++    e = {k: v for k, v in os.environ.items() if not k.startswith(("UV_", "VIRTUAL_ENV"))}
++    e.update(QF_T=str(t), LOCALAPPDATA=str(t / "local"), SystemRoot=str(t / "win"), ProgramFiles=str(t / "pf"),
++             FAKE_UV_PY="ok", FAKE_MISSING="nvdiffrast.torch diff_gaussian_rasterization",
++             PATH=str(t / "bin") + ":/usr/bin:/bin")
++    e["ProgramFiles(x86)"] = str(t / "pf86")
++    return t, e
++
++
++def run(t, e, *args):
++    r = subprocess.run([PWSH, "-NoProfile", "-File", str(t / "QuokkaForm/installer/setup_runtime.ps1"),
++                        "-Unattended", "-Models", "no", *args], env=e, capture_output=True, text=True, timeout=180)
++    calls = (t / "calls.log").read_text() if (t / "calls.log").exists() else ""
++    (t / "calls.log").unlink(missing_ok=True)
++    return r.returncode, r.stdout + r.stderr, calls
++
++
++def runtime(t):
++    return t / "local/QuokkaForm/runtime"
++
++
++def venv_calls(calls):
++    return [line for line in calls.splitlines() if line.startswith("FAKEUV venv")]
++
++
++def venv_home(t):
++    return re.search(r"^home = (.*)$", (runtime(t) / "venv/pyvenv.cfg").read_text(), re.M).group(1)
++
++
++def test_normal_install_then_rerun(env):
++    t, e = env
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    real = runtime(t) / "python" / PY_DIR
++    assert "FAKEUV python install 3.10.22 --no-bin --no-registry" in calls
++    [v] = venv_calls(calls)
++    assert f"--python {real}/python.exe" in v and "INSTALL_DIR=unset" in v and "DOWNLOADS=manual" in v
++    assert venv_home(t) == str(real)
++    assert (runtime(t) / "venv/quokkaform-setup.json").exists()
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    assert "python install" not in calls and not venv_calls(calls) and "Already installed" in out
++
++
++def test_error_448_after_unpack_uses_the_unpacked_python(env):
++    """The user's PC: uv unpacks Python, then fails on the minor-version junction."""
++    t, e = env
++    e["FAKE_UV_PY"] = "448"
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    assert "not needed" in out and "os error 448" in out
++    assert "internet connection?" not in out
++    real = runtime(t) / "python" / PY_DIR
++    [v] = venv_calls(calls)
++    assert f"--python {real}/python.exe" in v and "INSTALL_DIR=unset" in v
++    assert venv_home(t) == str(real)
++
++
++def test_resume_after_the_failed_0_9_0_run(env):
++    """0.9.0 left Python unpacked and maybe a half-made venv: repair reuses Python, remakes the venv."""
++    t, e = env
++    real = runtime(t) / "python" / PY_DIR
++    _exe(real / "python.exe", FAKE_PY)
++    (runtime(t) / "venv").mkdir(parents=True)
++    (runtime(t) / "venv" / "leftover.txt").write_text("half-made")
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    assert "python install" not in calls and "already unpacked" in out
++    assert len(venv_calls(calls)) == 1 and not (runtime(t) / "venv" / "leftover.txt").exists()
++    assert venv_home(t) == str(real)
++
++
++def test_venv_home_through_the_junction_is_rewritten(env):
++    t, e = env
++    e["FAKE_VENV_HOME"] = str(runtime(t) / "python" / LINK_DIR)
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    assert venv_home(t) == str(runtime(t) / "python" / PY_DIR)
++
++
++def _fake_archive(t):
++    buf = io.BytesIO()
++    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
++        tf.add(str(t / "fakepy"), arcname="python/python.exe")
++    return buf.getvalue()
++
++
++def _patch_script(t, sha=None, url="https://127.0.0.1:9/none.tar.gz"):
++    p = t / "QuokkaForm/installer/setup_runtime.ps1"
++    s = p.read_text()
++    if sha:
++        s = re.sub(r"\$PyArchiveSha = '[0-9a-f]{64}'", f"$PyArchiveSha = '{sha}'", s)
++    s = re.sub(r"\$PyArchiveUrl = '[^']*'", f"$PyArchiveUrl = '{url}'", s)
++    p.write_text(s)
++    return re.search(r"\$PyArchive\s+= '([^']+)'", s).group(1)
++
++
++def test_direct_download_fallback_when_uv_cannot_unpack(env):
++    t, e = env
++    e["FAKE_UV_PY"] = "448-noextract"
++    data = _fake_archive(t)
++    name = _patch_script(t, sha=hashlib.sha256(data).hexdigest())
++    (runtime(t) / "downloads").mkdir(parents=True)
++    (runtime(t) / "downloads" / name).write_bytes(data)
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    real = runtime(t) / "python" / PY_DIR
++    assert (real / "python.exe").exists() and not (runtime(t) / "python/.quokkaform-unpack").exists()
++    [v] = venv_calls(calls)
++    assert f"--python {real}/python.exe" in v
++    assert venv_home(t) == str(real)
++
++
++def test_direct_download_with_wrong_hash_is_not_used(env):
++    t, e = env
++    e["FAKE_UV_PY"] = "448-noextract"
++    name = _patch_script(t)               # real pinned SHA, fake archive
++    (runtime(t) / "downloads").mkdir(parents=True)
++    (runtime(t) / "downloads" / name).write_bytes(_fake_archive(t))
++    code, out, calls = run(t, e)
++    assert code == 1
++    assert "unexpected SHA-256" in out and not (runtime(t) / "python" / PY_DIR).exists()
++
++
++def test_installed_python_3_10_is_the_last_fallback(env):
++    t, e = env
++    e["FAKE_UV_PY"] = "448-noextract"
++    _patch_script(t)                      # direct download fails (nothing listens on port 9)
++    _exe(t / "bin" / "python.exe", FAKE_PY)
++    code, out, calls = run(t, e)
++    assert code == 0, out
++    assert "Using the Python 3.10 installed at" in out
++    [v] = venv_calls(calls)
++    assert f"--python {t}/bin/python.exe" in v
++    assert venv_home(t) == str(t / "bin")
++
++
++def test_everything_fails_with_error_448_gives_an_accurate_message(env):
++    t, e = env
++    e["FAKE_UV_PY"] = "448-noextract"
++    _patch_script(t)
++    code, out, calls = run(t, e)
++    assert code == 1
++    assert "SETUP STOPPED: Could not set up Python 3.10." in out
++    assert "untrusted mount point" in out and "not an internet problem" in out and "python.org" in out
++    assert "internet connection?" not in out
++    assert not venv_calls(calls)
++
++
++def test_package_install_failure_stops(env):
++    t, e = env
++    e["FAKE_UV_PIP_RC"] = "1"
++    code, out, calls = run(t, e)
++    assert code == 1 and "Installing the Python packages failed" in out
+-- 
+2.47.3
+
